@@ -1,4 +1,4 @@
-package main
+package pxlocal
 
 import (
 	"log"
@@ -16,9 +16,8 @@ type ProxyStats struct {
 type ProxyConn struct {
 	sentBytes     uint64
 	receivedBytes uint64
-	// laddr, raddr  *net.TCPAddr
-	lconn, rconn net.Conn
-	stats        *ProxyStats
+	lconn, rconn  net.Conn
+	stats         *ProxyStats
 }
 
 func closeRead(c net.Conn) error {
@@ -128,7 +127,7 @@ func (p *ProxyConn) pipe(src, dst net.Conn) chan error {
 				log.Printf("Write failed '%s'\n", err)
 				return
 			}
-			log.Println("pipe --> IsLocal:", islocal, "write:", n)
+			log.Println("pipe --> local:", islocal, "write:", n) //, string(b[:n]))
 			if islocal {
 				p.sentBytes += uint64(n)
 				p.stats.sentBytes += uint64(n)
