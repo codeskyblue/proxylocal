@@ -8,6 +8,8 @@ go get -v github.com/codeskyblue/proxylocal
 ```
 
 ## Usage
+Now the usage is complex, I'll modify it later.
+
 **Server**
 
 ```
