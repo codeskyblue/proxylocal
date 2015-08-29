@@ -9,7 +9,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"regexp"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/qiniu/log"
@@ -42,6 +46,15 @@ type Msg struct {
 
 type Tunnel struct {
 	wsconn *websocket.Conn
+	sync.Mutex
+	index int64
+}
+
+func (t *Tunnel) uniqName() string {
+	t.Lock()
+	defer t.Unlock()
+	t.index += 1
+	return fmt.Sprintf("%d", t.index)
 }
 
 func (t *Tunnel) RequestNewConn(remoteAddr string) (net.Conn, error) {
@@ -57,6 +70,14 @@ func (t *Tunnel) RequestNewConn(remoteAddr string) (net.Conn, error) {
 		return nil, errors.New("maybe hijack not supported, failed")
 	}
 	return lconn, nil
+}
+
+// used for httputil reverse proxy
+func (t *Tunnel) generateTransportDial() func(network, addr string) (net.Conn, error) {
+	return func(network, addr string) (net.Conn, error) {
+		log.Println("transport", network, addr)
+		return t.RequestNewConn(t.uniqName())
+	}
 }
 
 // Listen and forward connections
@@ -97,22 +118,25 @@ func NewProxyListener(tunnel *Tunnel, listenAddress string) (lis net.Listener, e
 	return listener, nil
 }
 
-func FigureListenAddress(r *http.Request) string {
-	var listenPort int
+func FigureListenAddress(r *http.Request) (protocal, subdomain string, port int) {
+	protocal = r.FormValue("protocal")
+	if protocal == "" {
+		protocal = "http"
+	}
 	reqPort := r.FormValue("port")
 	if reqPort == "" {
-		listenPort = 12345
+		port = 12345
 	} else {
-		fmt.Sscanf(reqPort, "%d", &listenPort)
-		// ignore error
+		fmt.Sscanf(reqPort, "%d", &port)
 	}
-	return fmt.Sprintf("0.0.0.0:%d", listenPort)
+	subdomain = r.FormValue("subdomain")
+	return
 }
 
-func ControlHandler(w http.ResponseWriter, r *http.Request) {
+func controlHandler(w http.ResponseWriter, r *http.Request) {
 	// read listen port from request
-	proxyAddr := FigureListenAddress(r)
-	log.Println("proxy listen addr:", proxyAddr)
+	protocal, subdomain, port := FigureListenAddress(r)
+	log.Println("proxy listen addr:", protocal, subdomain, port)
 
 	// create websocket connection
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -123,14 +147,21 @@ func ControlHandler(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	log.Println(conn.RemoteAddr())
 
-	// create new port to listen
 	tunnel := &Tunnel{wsconn: conn}
-	listener, err := NewProxyListener(tunnel, proxyAddr)
-	if err != nil {
-		http.Error(w, err.Error(), 501)
-		return
+	// TCP: create new port to listen
+	switch protocal {
+	case "tcp":
+		proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
+		listener, err := NewProxyListener(tunnel, proxyAddr)
+		if err != nil {
+			http.Error(w, err.Error(), 501)
+			return
+		}
+		defer listener.Close()
+	case "http":
+		log.Println("Not implement")
 	}
-	defer listener.Close()
+	// HTTP: use httputil.ReverseProxy
 
 	for {
 		var msg Msg
@@ -140,23 +171,6 @@ func ControlHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Println("recv json:", msg)
 	}
-	// agentName := r.RemoteAddr
-	// pipech := NewPipeChan() // for each connection generate a pipe chan, use forward port as name
-	// namedChan[agentName] = pipech
-
-	// // go func() {
-	// for msg := range pipech.recvChan { // recv request from browser or some tcp client
-	// 	// request agent create new connection
-	// 	if err := conn.WriteJSON(msg); err != nil {
-	// 		break
-	// 	}
-	// 	// get reverse connection
-	// 	if err := conn.ReadJSON(&msg); err != nil {
-	// 		log.Println(err)
-	// 		break
-	// 	}
-	// }
-	// }()
 }
 
 type HijactRW struct {
@@ -181,7 +195,7 @@ func NewHijackReadWriteCloser(conn net.Conn, bufrw *bufio.ReadWriter) net.Conn {
 	}
 }
 
-func ProxyHandler(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "webserver don't support hijacking", http.StatusInternalServerError)
@@ -205,18 +219,42 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn := NewHijackReadWriteCloser(hjconn, bufrw)
 	connCh <- conn
-
-	// defer conn.Close()
-	// _ = bufrw
-	// // TODO
 }
 
-func HomepageHandler(w http.ResponseWriter, r *http.Request) {
+func homepageHandler(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, fmt.Sprintf("recvBytes: %d, sendBytes: %d",
 		proxyStats.receivedBytes, proxyStats.sentBytes))
 }
 
+type ProxyServer struct {
+	*http.ServeMux
+}
+
+func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.RequestURI)
+	h, _ := p.Handler(r)
+	h.ServeHTTP(w, r)
+}
+
+//func (p *ProxyServer) AddHttpReverseProxy(host string
+
+func NewProxyServer() *ProxyServer {
+	p := &ProxyServer{
+		ServeMux: http.NewServeMux(),
+	}
+	p.HandleFunc("/", homepageHandler)
+	p.HandleFunc("/ws", controlHandler)
+	p.HandleFunc("/proxyhijack", proxyHandler)
+
+	//rp := httputil.ReverseProxy{}
+	//rp.Transport
+	return p
+}
+
 func startAgent(proxyAddr string, serverAddr string, remoteListenPort int) {
+	if !regexp.MustCompile("^http[s]://").MatchString(serverAddr) {
+		serverAddr = "http://" + serverAddr
+	}
 	u, err := url.Parse(serverAddr)
 	if err != nil {
 		log.Fatal(err)
@@ -229,11 +267,13 @@ func startAgent(proxyAddr string, serverAddr string, remoteListenPort int) {
 		log.Fatal(err)
 	}
 	// specify remote listen port
+	query := u.Query()
+	query.Add("protocal", "tcp")
+	query.Add("subdomain", "")
 	if remoteListenPort != 0 {
-		query := u.Query()
 		query.Add("port", strconv.Itoa(remoteListenPort))
-		u.RawQuery = query.Encode()
 	}
+	u.RawQuery = query.Encode()
 
 	wsclient, _, err := websocket.NewClient(conn, u, nil, 1024, 1024)
 	if err != nil {
@@ -248,11 +288,7 @@ func startAgent(proxyAddr string, serverAddr string, remoteListenPort int) {
 			break
 		}
 		log.Println("recv:", msg)
-		// var sendMsg Msg
-		// if err := wsclient.WriteJSON(sendMsg); err != nil {
-		// 	log.Println("write err:", err)
-		// 	break
-		// }
+
 		sconn, err := net.Dial("tcp", u.Host)
 		if err != nil {
 			log.Println(err)
@@ -289,20 +325,35 @@ func main() {
 	var serverAddr string
 	var proxyPort int
 	var proxyAddr string
-	flag.BoolVar(&serverMode, "s", false, "run in server mode")
+	var subDomain string
+	flag.BoolVar(&serverMode, "server", false, "run in server mode")
 	flag.StringVar(&serverAddr, "addr", "localhost:5000", "server address")
 	flag.IntVar(&proxyPort, "proxy-port", 0, "server proxy listen port")
-	flag.StringVar(&proxyAddr, "proxy", "www.163.com:80", "proxyed service address")
+	flag.StringVar(&subDomain, "subdomain", "", "proxy subdomain")
 
+	flag.Usage = func() {
+		fmt.Printf("Usage: %s [OPTIONS] <port | host:port>\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+	if !serverMode && len(flag.Args()) != 1 {
+		flag.Usage()
+		return
+	}
+
+	proxyAddr = flag.Arg(0)
+	if !strings.Contains(proxyAddr, ":") { // only contains port
+		proxyAddr = "localhost:" + proxyAddr
+	}
 
 	if serverMode {
 		fmt.Println("Hello proxy local")
-		http.HandleFunc("/", HomepageHandler)
-		http.HandleFunc("/ws", ControlHandler)
-		http.HandleFunc("/proxyhijack", ProxyHandler)
-		log.Fatal(http.ListenAndServe(addr, nil))
+		ps := NewProxyServer()
+		//http.HandleFunc("/", homepageHandler)
+		//http.HandleFunc("/ws", controlHandler)
+		//http.HandleFunc("/proxyhijack", ProxyHandler)
+		log.Fatal(http.ListenAndServe(addr, ps))
 	}
 
-	startAgent(proxyAddr, "http://"+serverAddr, proxyPort)
+	startAgent(proxyAddr, serverAddr, proxyPort)
 }
