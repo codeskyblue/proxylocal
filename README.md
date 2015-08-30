@@ -2,6 +2,7 @@
 
 Just for study how to proxy local server to public network.
 
+目前服务是放在了 <http://proxylocal.xyz:8080>, 当前只是试验阶段。
 
 ## Installation
 
@@ -13,9 +14,7 @@ You can combine from source code
 go get -v github.com/codeskyblue/proxylocal
 ```
 
-Or [download](https://github.com/codeskyblue/proxylocal/releases) according to your platform.
-
-<https://github.com/codeskyblue/proxylocal/releases>
+<del>Or [download](https://github.com/codeskyblue/proxylocal/releases) according to your platform.</del>
 
 ## Usage
 
