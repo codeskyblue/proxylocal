@@ -22,10 +22,11 @@ func main() {
 	var protocal string
 	var domain string
 	flag.BoolVar(&serverMode, "server", false, "run in server mode")
-	flag.StringVar(&serverAddr, "addr", "localhost:5000", "server address")
+	//flag.StringVar(&serverAddr, "addr", "localhost:5000", "server address")
+	flag.StringVar(&serverAddr, "addr", "proxylocal.xyz", "server address")
 	flag.IntVar(&proxyPort, "port", 0, "proxy server listen port, used for tcp")
 	flag.StringVar(&subDomain, "subdomain", "", "proxy subdomain")
-	flag.StringVar(&domain, "domain", "", "proxy server domain name")
+	flag.StringVar(&domain, "domain", "localhost", "proxy server domain name")
 	flag.StringVar(&protocal, "protocal", "http", "tcp or http")
 
 	flag.Usage = func() {

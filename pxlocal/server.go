@@ -130,48 +130,6 @@ func FigureListenAddress(r *http.Request) (protocal, subdomain string, port int)
 	return
 }
 
-/*
-func controlHandler(w http.ResponseWriter, r *http.Request) {
-	// read listen port from request
-	protocal, subdomain, port := FigureListenAddress(r)
-	log.Println("proxy listen addr:", protocal, subdomain, port)
-
-	// create websocket connection
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		http.Error(w, err.Error(), 502)
-		return
-	}
-	defer conn.Close()
-	log.Println(conn.RemoteAddr())
-
-	tunnel := &Tunnel{wsconn: conn}
-	// TCP: create new port to listen
-	switch protocal {
-	case "tcp":
-		proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
-		listener, err := NewTcpProxyListener(tunnel, proxyAddr)
-		if err != nil {
-			http.Error(w, err.Error(), 501)
-			return
-		}
-		defer listener.Close()
-	case "http":
-		log.Println("Not implement")
-	}
-	// HTTP: use httputil.ReverseProxy
-
-	for {
-		var msg Msg
-		if err := conn.ReadJSON(&msg); err != nil {
-			log.Println(err)
-			break
-		}
-		log.Println("recv json:", msg)
-	}
-}
-*/
-
 type HijactRW struct {
 	*net.TCPConn
 	bufrw *bufio.ReadWriter
@@ -236,11 +194,12 @@ func wsSendMessage(conn *websocket.Conn, message string) error {
 
 func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, fmt.Sprintf("recvBytes: %d, sendBytes: %d <br>",
+		w.Header().Add("Content-Type", "text/html")
+		io.WriteString(w, fmt.Sprintf("<b>TCP:</b> recvBytes: %d, sendBytes: %d <br>",
 			proxyStats.receivedBytes, proxyStats.sentBytes))
 		io.WriteString(w, "<hr>")
 		for pname, _ := range ps.revProxies {
-			io.WriteString(w, fmt.Sprintf("http proxy: %d <br>", pname))
+			io.WriteString(w, fmt.Sprintf("http proxy: %s <br>", pname))
 		}
 	}
 }
@@ -316,15 +275,13 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 
 func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Println("request info:", r.Method, r.Host, r.RequestURI)
-	host, _, _ := net.SplitHostPort(r.Host)
-	//p.RLock()
-	//p.RUnlock()
+	//host, _, _ := net.SplitHostPort(r.Host)
 	// http://stackoverflow.com/questions/6899069/why-are-request-url-host-and-scheme-blank-in-the-development-server
 	r.URL.Scheme = "http" // ??
 	r.URL.Host = r.Host   // ??
 	log.Println("URL path:", r.URL.Path)
 	log.Printf("pxies: %v", p.revProxies)
-	if rpx, ok := p.revProxies[host]; ok {
+	if rpx, ok := p.revProxies[r.Host]; ok {
 		log.Println("server http rev proxy")
 		rpx.ServeHTTP(w, r)
 		return
