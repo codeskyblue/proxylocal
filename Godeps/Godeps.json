@@ -1,0 +1,15 @@
+{
+	"ImportPath": "github.com/codeskyblue/proxylocal",
+	"GoVersion": "go1.4.2",
+	"Deps": [
+		{
+			"ImportPath": "github.com/gorilla/websocket",
+			"Rev": "b6ab76f1fe9803ee1d59e7e5b2a797c1fe897ce5"
+		},
+		{
+			"ImportPath": "github.com/qiniu/log",
+			"Comment": "v1.0.00-2-ge002bc2",
+			"Rev": "e002bc2020b19bfa61ed378cc5407383dbd2f346"
+		}
+	]
+}
