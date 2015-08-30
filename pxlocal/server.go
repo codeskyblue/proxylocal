@@ -197,6 +197,7 @@ func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.
 		w.Header().Add("Content-Type", "text/html")
 		io.WriteString(w, fmt.Sprintf("<b>TCP:</b> recvBytes: %d, sendBytes: %d <br>",
 			proxyStats.receivedBytes, proxyStats.sentBytes))
+		io.WriteString(w, fmt.Sprintf("<b>HTTP:</b> ...<br>"))
 		io.WriteString(w, "<hr>")
 		for pname, _ := range ps.revProxies {
 			io.WriteString(w, fmt.Sprintf("http proxy: %s <br>", pname))
@@ -230,6 +231,9 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 				return
 			}
 			defer listener.Close()
+			host, _, _ := net.SplitHostPort(ps.domain)
+			wsSendMessage(conn, fmt.Sprintf(
+				"Local tcp conn is now publicly available via:\n%s:%d\n", host, port))
 		case "http":
 			log.Println("start http proxy")
 			tr := &http.Transport{
@@ -245,7 +249,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			// hook(HOOK_CREATE_HTTP_SUBDOMAIN, subdomain)
 			// generate a uniq domain
 			if subdomain == "" {
-				subdomain = uniqName(5)
+				subdomain = uniqName(5) + ".t"
 			}
 			pxDomain := subdomain + "." + ps.domain
 			log.Println("http px use domain:", pxDomain)
@@ -257,7 +261,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			ps.revProxies[pxDomain] = revProxy
 			ps.Unlock()
 			wsSendMessage(conn, fmt.Sprintf(
-				"Local server is now publicly available via:\n%s\n", pxDomain))
+				"Local server is now publicly available via:\nhttp://%s\n", pxDomain))
 
 			defer func() {
 				ps.Lock()
