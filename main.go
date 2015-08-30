@@ -6,9 +6,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/codeskyblue/proxylocal/pxlocal"
 )
@@ -19,13 +20,11 @@ func main() {
 	var proxyPort int
 	var proxyAddr string
 	var subDomain string
-	var protocal string
 	var domain string
 	var debug bool
 	flag.BoolVar(&serverMode, "server", false, "run in server mode")
 	flag.StringVar(&serverAddr, "server-addr", "proxylocal.xyz:8080", "server address")
 	flag.StringVar(&domain, "server-domain", "", "proxy server domain name, optional")
-	flag.StringVar(&protocal, "protocal", "http", "tcp or http")
 	flag.StringVar(&subDomain, "subdomain", "", "proxy subdomain, used for http")
 	flag.BoolVar(&debug, "debug", false, "open debug mode")
 	flag.IntVar(&proxyPort, "port", 0, "proxy server listen port, used for tcp")
@@ -38,15 +37,6 @@ func main() {
 	if !serverMode && len(flag.Args()) != 1 {
 		flag.Usage()
 		return
-	}
-
-	proxyAddr = flag.Arg(0)
-	if !strings.Contains(proxyAddr, ":") {
-		if _, err := strconv.Atoi(proxyAddr); err == nil { // only contain port
-			proxyAddr = "localhost:" + proxyAddr
-		} else { // only contain host
-			proxyAddr = proxyAddr + ":80"
-		}
 	}
 
 	if serverMode {
@@ -63,5 +53,19 @@ func main() {
 		log.Fatal(http.ListenAndServe(addr, ps))
 	}
 
-	pxlocal.StartAgent(debug, protocal, subDomain, proxyAddr, serverAddr, proxyPort)
+	proxyAddr = flag.Arg(0)
+	if !regexp.MustCompile("^(http[s]|tcp)://").MatchString(proxyAddr) {
+		if _, err := strconv.Atoi(proxyAddr); err == nil { // only contain port
+			proxyAddr = "localhost:" + proxyAddr
+		} else {
+			proxyAddr += ":80"
+		}
+		proxyAddr = "http://" + proxyAddr
+	}
+	pURL, err := url.Parse(proxyAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("proxy URL:", pURL)
+	pxlocal.StartAgent(debug, pURL, subDomain, serverAddr, proxyPort)
 }

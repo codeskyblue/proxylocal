@@ -3,6 +3,8 @@ package pxlocal
 import (
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -11,11 +13,11 @@ import (
 	"github.com/qiniu/log"
 )
 
-func StartAgent(debug bool, protocal, subdomain, proxyAddr string, serverAddr string, remoteListenPort int) {
+func StartAgent(debug bool, pURL *url.URL, subdomain, serverAddr string, remoteListenPort int) {
 	if !debug {
 		log.SetOutputLevel(log.Linfo)
 	}
-	log.Debug("start proxy", proxyAddr)
+	log.Debug("start proxy", pURL)
 	if !regexp.MustCompile("^http[s]://").MatchString(serverAddr) {
 		serverAddr = "http://" + serverAddr
 	}
@@ -32,7 +34,7 @@ func StartAgent(debug bool, protocal, subdomain, proxyAddr string, serverAddr st
 	}
 	// specify remote listen port
 	query := sURL.Query()
-	query.Add("protocal", protocal)
+	query.Add("protocal", pURL.Scheme)
 	query.Add("subdomain", subdomain)
 	if remoteListenPort != 0 {
 		query.Add("port", strconv.Itoa(remoteListenPort))
@@ -54,15 +56,79 @@ func StartAgent(debug bool, protocal, subdomain, proxyAddr string, serverAddr st
 		log.Debug("recv:", msg)
 
 		// sURL: serverURL
-		handleWsMsg(msg, sURL, proxyAddr)
+		rnl := NewRevNetListener()
+		go handleRevConn(pURL, rnl)
+		handleWsMsg(msg, sURL, rnl)
 	}
 }
 
-func handleWsMsg(msg Msg, sURL *url.URL, pAddr string) {
+type RevNetListener struct {
+	connCh chan net.Conn
+}
+
+func NewRevNetListener() *RevNetListener {
+	return &RevNetListener{
+		connCh: make(chan net.Conn, 100),
+	}
+}
+
+func (r *RevNetListener) Accept() (net.Conn, error) {
+	return <-r.connCh, nil
+}
+
+func (r *RevNetListener) Addr() net.Addr {
+	return nil
+}
+
+func (r *RevNetListener) Close() error {
+	return nil
+}
+
+func handleRevConn(pURL *url.URL, lis net.Listener) {
+	switch pURL.Scheme {
+	case "tcp":
+		for {
+			rconn, err := lis.Accept()
+			if err != nil {
+				log.Errorf("accept error: %v", err)
+				return
+			}
+			log.Println("dial local:", pURL)
+			lconn, err := net.Dial("tcp", pURL.Host)
+			if err != nil {
+				// wsclient
+				log.Println(err)
+				rconn.Close()
+				break
+			}
+			// start forward local proxy
+			pc := &ProxyConn{
+				lconn: lconn,
+				rconn: rconn,
+				stats: proxyStats,
+			}
+			go pc.start()
+		}
+	case "http":
+		remote := pURL
+		rp := &httputil.ReverseProxy{
+			Director: func(req *http.Request) {
+				req.Host = remote.Host
+				req.URL.Scheme = remote.Scheme
+				req.URL.Host = remote.Host
+			},
+		}
+		http.Serve(lis, rp)
+	default:
+		log.Println("Unknown protocal:", pURL.Scheme)
+	}
+}
+
+func handleWsMsg(msg Msg, sURL *url.URL, rnl *RevNetListener) {
 	u := sURL
 	switch msg.Type {
 	case TYPE_NEWCONN:
-		log.Println("dial remote:", u.Host)
+		//log.Println("dial remote:", u.Host)
 		sconn, err := net.Dial("tcp", u.Host)
 		if err != nil {
 			log.Println(err)
@@ -74,22 +140,7 @@ func handleWsMsg(msg Msg, sURL *url.URL, pAddr string) {
 			log.Println(err)
 			break
 		}
-		// call local service
-		log.Println("dial local:", pAddr)
-		lconn, err := net.Dial("tcp", pAddr)
-		if err != nil {
-			// wsclient
-			log.Println(err)
-			sconn.Close()
-			break
-		}
-		// start forward local proxy
-		pc := &ProxyConn{
-			lconn: lconn,
-			rconn: sconn,
-			stats: proxyStats,
-		}
-		go pc.start()
+		rnl.connCh <- sconn
 	case TYPE_MESSAGE:
 		fmt.Printf("Recv Message: %v\n", msg.Body)
 	default:
