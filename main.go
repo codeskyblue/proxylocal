@@ -54,11 +54,11 @@ func main() {
 	}
 
 	proxyAddr = flag.Arg(0)
-	if !regexp.MustCompile("^(http[s]|tcp)://").MatchString(proxyAddr) {
+	if !regexp.MustCompile("^(http|https|tcp)://").MatchString(proxyAddr) {
 		if _, err := strconv.Atoi(proxyAddr); err == nil { // only contain port
 			proxyAddr = "localhost:" + proxyAddr
 		} else {
-			proxyAddr += ":80"
+			//proxyAddr += ":80"
 		}
 		proxyAddr = "http://" + proxyAddr
 	}

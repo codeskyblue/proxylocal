@@ -234,7 +234,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			host, _, _ := net.SplitHostPort(ps.domain)
 			wsSendMessage(conn, fmt.Sprintf(
 				"Local tcp conn is now publicly available via:\n%s:%d\n", host, port))
-		case "http":
+		case "http", "https":
 			log.Println("start http proxy")
 			tr := &http.Transport{
 				Dial: tunnel.generateTransportDial(),

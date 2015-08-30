@@ -16,6 +16,8 @@ import (
 func StartAgent(debug bool, pURL *url.URL, subdomain, serverAddr string, remoteListenPort int) {
 	if !debug {
 		log.SetOutputLevel(log.Linfo)
+	} else {
+		log.SetOutputLevel(log.Ldebug)
 	}
 	log.Debug("start proxy", pURL)
 	if !regexp.MustCompile("^http[s]://").MatchString(serverAddr) {
@@ -109,7 +111,7 @@ func handleRevConn(pURL *url.URL, lis net.Listener) {
 			}
 			go pc.start()
 		}
-	case "http":
+	case "http", "https":
 		remote := pURL
 		rp := &httputil.ReverseProxy{
 			Director: func(req *http.Request) {
@@ -128,7 +130,7 @@ func handleWsMsg(msg Msg, sURL *url.URL, rnl *RevNetListener) {
 	u := sURL
 	switch msg.Type {
 	case TYPE_NEWCONN:
-		//log.Println("dial remote:", u.Host)
+		log.Debug("dial remote:", u.Host)
 		sconn, err := net.Dial("tcp", u.Host)
 		if err != nil {
 			log.Println(err)
