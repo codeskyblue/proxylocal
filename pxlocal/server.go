@@ -256,7 +256,8 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			ps.Lock()
 			ps.revProxies[pxDomain] = revProxy
 			ps.Unlock()
-			wsSendMessage(conn, fmt.Sprintf("visit http://%s", pxDomain))
+			wsSendMessage(conn, fmt.Sprintf(
+				"Local server is now publicly available via:\n%s\n", pxDomain))
 
 			defer func() {
 				ps.Lock()

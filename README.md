@@ -2,34 +2,40 @@
 
 Just for study how to proxy local server to public network.
 
-## Install
+
+## Installation
+
+ProxyLocal is a tool that runs on the command line.
+
+You can combine from source code
+
 ```
 go get -v github.com/codeskyblue/proxylocal
 ```
 
+Or [download](https://github.com/codeskyblue/proxylocal/releases) according to your platform.
+
+<https://github.com/codeskyblue/proxylocal/releases>
+
 ## Usage
-Now the usage is complex, I'll modify it later.
 
-**Server**
-
-```
-proxylocal -s -addr :5000
-```
-
-**Agent** which in private addr.
-
-ex: your server is in proxy.local.com
-```
-proxylocal -addr proxy.local.com:5000 -proxy-port 7777 -proxy localhost:8080
-```
-
-Maybe you need to run a simple file server to test, if 8080 is not listen.
+Assume you are running your local web-server on port 3000. To make it publicly available run:
 
 ```
-python -mSimpleHTTPServer 8080
+$ proxylocal 3000
+Local server on port 3000 is now publicly available via:
+http://fp9k.t.proxylocal.com/
 ```
 
-Check `proxy.local.com:7777`
+Now you can open this link in your favorite browser and request will be proxied to your local web-server.
+
+Also you can specify preferred host you want to use, e.g.:
+
+```
+$ proxylocal -subdomain testhost 3000
+Local server on port 3000 is now publicly available via:
+http://testhost.proxylocal.com/
+```
 
 ## LICENSE
 MIT(LICENSE)

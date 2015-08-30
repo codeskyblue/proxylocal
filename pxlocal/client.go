@@ -11,7 +11,10 @@ import (
 	"github.com/qiniu/log"
 )
 
-func StartAgent(protocal, subdomain, proxyAddr string, serverAddr string, remoteListenPort int) {
+func StartAgent(debug bool, protocal, subdomain, proxyAddr string, serverAddr string, remoteListenPort int) {
+	if !debug {
+		log.SetOutputLevel(log.Linfo)
+	}
 	log.Debug("start proxy", proxyAddr)
 	if !regexp.MustCompile("^http[s]://").MatchString(serverAddr) {
 		serverAddr = "http://" + serverAddr
