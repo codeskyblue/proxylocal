@@ -42,8 +42,8 @@ Assume you are running your local web-server on port 3000. To make it publicly a
 
 ```
 $ proxylocal 3000
-Local server on port 3000 is now publicly available via:
-http://fp9k.t.proxylocal.com/
+Recv Message: Local server is now publicly available via:
+http://v61ny.t.proxylocal.xyz:8080
 ```
 
 Now you can open this link in your favorite browser and request will be proxied to your local web-server.
@@ -52,7 +52,7 @@ Also you can specify preferred host you want to use, e.g.:
 
 ```
 $ proxylocal -subdomain testhost 3000
-Local server on port 3000 is now publicly available via:
+Recv Message: Local server is now publicly available via:
 http://testhost.proxylocal.com/
 ```
 
