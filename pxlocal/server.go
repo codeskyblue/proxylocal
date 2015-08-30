@@ -257,6 +257,12 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			ps.revProxies[pxDomain] = revProxy
 			ps.Unlock()
 			wsSendMessage(conn, fmt.Sprintf("visit http://%s", pxDomain))
+
+			defer func() {
+				ps.Lock()
+				delete(ps.revProxies, pxDomain)
+				ps.Unlock()
+			}()
 		default:
 			log.Println("unknown protocal:", protocal)
 			return
