@@ -19,10 +19,14 @@ func main() {
 	var proxyPort int
 	var proxyAddr string
 	var subDomain string
+	var protocal string
+	var domain string
 	flag.BoolVar(&serverMode, "server", false, "run in server mode")
 	flag.StringVar(&serverAddr, "addr", "localhost:5000", "server address")
-	flag.IntVar(&proxyPort, "proxy-port", 0, "server proxy listen port")
+	flag.IntVar(&proxyPort, "port", 0, "proxy server listen port, used for tcp")
 	flag.StringVar(&subDomain, "subdomain", "", "proxy subdomain")
+	flag.StringVar(&domain, "domain", "", "proxy server domain name")
+	flag.StringVar(&protocal, "protocal", "http", "tcp or http")
 
 	flag.Usage = func() {
 		fmt.Printf("Usage: %s [OPTIONS] <port | host:port>\n", os.Args[0])
@@ -44,11 +48,11 @@ func main() {
 	}
 
 	if serverMode {
-		fmt.Println("Hello proxylocal, server listen on", addr)
-		ps := pxlocal.NewProxyServer()
+		fmt.Println("proxylocal: server listen on", addr)
+		ps := pxlocal.NewProxyServer(domain)
 		log.Fatal(http.ListenAndServe(addr, ps))
 	}
 
-	pxlocal.StartAgent(proxyAddr, serverAddr, proxyPort)
+	pxlocal.StartAgent(protocal, subDomain, proxyAddr, serverAddr, proxyPort)
 	//startAgent(proxyAddr, serverAddr, proxyPort)
 }

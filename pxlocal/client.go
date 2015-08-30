@@ -11,8 +11,8 @@ import (
 	"github.com/qiniu/log"
 )
 
-func StartAgent(proxyAddr string, serverAddr string, remoteListenPort int) {
-	log.Println("start proxy", proxyAddr)
+func StartAgent(protocal, subdomain, proxyAddr string, serverAddr string, remoteListenPort int) {
+	log.Debug("start proxy", proxyAddr)
 	if !regexp.MustCompile("^http[s]://").MatchString(serverAddr) {
 		serverAddr = "http://" + serverAddr
 	}
@@ -22,15 +22,15 @@ func StartAgent(proxyAddr string, serverAddr string, remoteListenPort int) {
 	}
 
 	sURL.Path = "/ws"
-	log.Println("host:", sURL.Host)
+	log.Debug("server host:", sURL.Host)
 	conn, err := net.Dial("tcp", sURL.Host)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// specify remote listen port
 	query := sURL.Query()
-	query.Add("protocal", "tcp")
-	query.Add("subdomain", "")
+	query.Add("protocal", protocal)
+	query.Add("subdomain", subdomain)
 	if remoteListenPort != 0 {
 		query.Add("port", strconv.Itoa(remoteListenPort))
 	}
@@ -45,10 +45,10 @@ func StartAgent(proxyAddr string, serverAddr string, remoteListenPort int) {
 	for {
 		var msg Msg
 		if err := wsclient.ReadJSON(&msg); err != nil {
-			log.Println("recv err:", err)
+			println("client exit")
 			break
 		}
-		log.Println("recv:", msg)
+		log.Debug("recv:", msg)
 
 		// sURL: serverURL
 		handleWsMsg(msg, sURL, proxyAddr)
@@ -87,7 +87,9 @@ func handleWsMsg(msg Msg, sURL *url.URL, pAddr string) {
 			stats: proxyStats,
 		}
 		go pc.start()
+	case TYPE_MESSAGE:
+		fmt.Printf("Recv Message: %v\n", msg.Body)
 	default:
-		log.Println("Type: %v not support", msg.Type)
+		log.Warnf("Type: %v not support", msg.Type)
 	}
 }

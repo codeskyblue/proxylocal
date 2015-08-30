@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -22,6 +23,7 @@ import (
 
 const (
 	TYPE_NEWCONN = iota + 1
+	TYPE_MESSAGE
 )
 
 var (
@@ -36,6 +38,7 @@ var (
 type Msg struct {
 	Type int
 	Name string
+	Body string
 }
 
 type Tunnel struct {
@@ -75,7 +78,7 @@ func (t *Tunnel) generateTransportDial() func(network, addr string) (net.Conn, e
 }
 
 // Listen and forward connections
-func NewProxyListener(tunnel *Tunnel, listenAddress string) (lis net.Listener, err error) {
+func NewTcpProxyListener(tunnel *Tunnel, listenAddress string) (lis net.Listener, err error) {
 	laddr, err := net.ResolveTCPAddr("tcp", listenAddress)
 	if err != nil {
 		return nil, err
@@ -127,6 +130,7 @@ func FigureListenAddress(r *http.Request) (protocal, subdomain string, port int)
 	return
 }
 
+/*
 func controlHandler(w http.ResponseWriter, r *http.Request) {
 	// read listen port from request
 	protocal, subdomain, port := FigureListenAddress(r)
@@ -146,7 +150,7 @@ func controlHandler(w http.ResponseWriter, r *http.Request) {
 	switch protocal {
 	case "tcp":
 		proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
-		listener, err := NewProxyListener(tunnel, proxyAddr)
+		listener, err := NewTcpProxyListener(tunnel, proxyAddr)
 		if err != nil {
 			http.Error(w, err.Error(), 501)
 			return
@@ -166,6 +170,7 @@ func controlHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("recv json:", msg)
 	}
 }
+*/
 
 type HijactRW struct {
 	*net.TCPConn
@@ -218,32 +223,136 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	connCh <- conn
 }
 
-func homepageHandler(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, fmt.Sprintf("recvBytes: %d, sendBytes: %d",
-		proxyStats.receivedBytes, proxyStats.sentBytes))
+type ProxyServer struct {
+	domain string
+	*http.ServeMux
+	revProxies map[string]*httputil.ReverseProxy
+	sync.RWMutex
 }
 
-type ProxyServer struct {
-	*http.ServeMux
+func wsSendMessage(conn *websocket.Conn, message string) error {
+	return conn.WriteJSON(&Msg{Type: TYPE_MESSAGE, Body: message})
+}
+
+func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, fmt.Sprintf("recvBytes: %d, sendBytes: %d <br>",
+			proxyStats.receivedBytes, proxyStats.sentBytes))
+		io.WriteString(w, "<hr>")
+		for pname, _ := range ps.revProxies {
+			io.WriteString(w, fmt.Sprintf("http proxy: %d <br>", pname))
+		}
+	}
+}
+
+func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// read listen port from request
+		protocal, subdomain, port := FigureListenAddress(r)
+		log.Println("proxy listen addr:", protocal, subdomain, port)
+
+		// create websocket connection
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			http.Error(w, err.Error(), 502)
+			return
+		}
+		defer conn.Close()
+		log.Println(conn.RemoteAddr())
+
+		tunnel := &Tunnel{wsconn: conn}
+		// TCP: create new port to listen
+		switch protocal {
+		case "tcp":
+			proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
+			listener, err := NewTcpProxyListener(tunnel, proxyAddr)
+			if err != nil {
+				http.Error(w, err.Error(), 501)
+				return
+			}
+			defer listener.Close()
+		case "http":
+			log.Println("start http proxy")
+			tr := &http.Transport{
+				Dial: tunnel.generateTransportDial(),
+			}
+			revProxy := &httputil.ReverseProxy{
+				Director: func(req *http.Request) {
+					log.Println("director:", req.RequestURI)
+				},
+				Transport: tr,
+			}
+			// should hook here
+			// hook(HOOK_CREATE_HTTP_SUBDOMAIN, subdomain)
+			// generate a uniq domain
+			if subdomain == "" {
+				subdomain = uniqName(5)
+			}
+			pxDomain := subdomain + "." + ps.domain
+			log.Println("http px use domain:", pxDomain)
+			if _, exists := ps.revProxies[pxDomain]; exists {
+				wsSendMessage(conn, fmt.Sprintf("subdomain [%s] has already been taken", pxDomain))
+				return
+			}
+			ps.Lock()
+			ps.revProxies[pxDomain] = revProxy
+			ps.Unlock()
+			wsSendMessage(conn, fmt.Sprintf("visit http://%s", pxDomain))
+		default:
+			log.Println("unknown protocal:", protocal)
+			return
+		}
+		// HTTP: use httputil.ReverseProxy
+		for {
+			var msg Msg
+			if err := conn.ReadJSON(&msg); err != nil {
+				log.Println(err)
+				break
+			}
+			log.Println("recv json:", msg)
+		}
+	}
 }
 
 func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Println(r.RequestURI)
+	log.Println("request info:", r.Method, r.Host, r.RequestURI)
+	host, _, _ := net.SplitHostPort(r.Host)
+	//p.RLock()
+	//p.RUnlock()
+	// http://stackoverflow.com/questions/6899069/why-are-request-url-host-and-scheme-blank-in-the-development-server
+	r.URL.Scheme = "http" // ??
+	r.URL.Host = r.Host   // ??
+	log.Println("URL path:", r.URL.Path)
+	log.Printf("pxies: %v", p.revProxies)
+	if rpx, ok := p.revProxies[host]; ok {
+		log.Println("server http rev proxy")
+		rpx.ServeHTTP(w, r)
+		return
+	}
+
+	//if p.domain != host {
+	//	http.Error(w, fmt.Sprintf("%s not ready", host), 504)
+	//	return
+	//}
+
 	h, _ := p.Handler(r)
 	h.ServeHTTP(w, r)
 }
 
-//func (p *ProxyServer) AddHttpReverseProxy(host string
-
-func NewProxyServer() *ProxyServer {
-	p := &ProxyServer{
-		ServeMux: http.NewServeMux(),
+// domain, ex shengxiang.me
+// dns should set *.shengxiang.me
+func NewProxyServer(domain string) *ProxyServer {
+	if domain == "" {
+		domain = "localhost"
 	}
-	p.HandleFunc("/", homepageHandler)
-	p.HandleFunc("/ws", controlHandler)
+	p := &ProxyServer{
+		domain:     domain,
+		ServeMux:   http.NewServeMux(),
+		revProxies: make(map[string]*httputil.ReverseProxy),
+	}
+	p.HandleFunc("/", p.newHomepageHandler())
+	p.HandleFunc("/ws", p.newControlHandler())
 	p.HandleFunc("/proxyhijack", proxyHandler)
 
-	//rp := httputil.ReverseProxy{}
-	//rp.Transport
 	return p
 }
