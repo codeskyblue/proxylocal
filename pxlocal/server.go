@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -22,6 +23,9 @@ import (
 // need ref: revproxy
 
 const (
+	TCP_MIN_PORT = 13000
+	TCP_MAX_PORT = 14000
+
 	TYPE_NEWCONN = iota + 1
 	TYPE_MESSAGE
 )
@@ -77,16 +81,44 @@ func (t *Tunnel) generateTransportDial() func(network, addr string) (net.Conn, e
 	}
 }
 
+func listenTcpInRangePort(port, minPort, maxPort int) (finnalPort int, lis *net.TCPListener, err error) {
+	if port != 0 {
+		laddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			return 0, nil, err
+		}
+		lis, err = net.ListenTCP("tcp", laddr)
+		return port, lis, err
+	}
+	for port = minPort; port < maxPort; port++ {
+		laddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			return 0, nil, err
+		}
+		lis, err := net.ListenTCP("tcp", laddr)
+		if err == nil {
+			return port, lis, nil
+		}
+	}
+	return 0, nil, errors.New("No port avaliable")
+}
+
 // Listen and forward connections
-func NewTcpProxyListener(tunnel *Tunnel, listenAddress string) (lis net.Listener, err error) {
-	laddr, err := net.ResolveTCPAddr("tcp", listenAddress)
+func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, err error) {
+	port, listener, err = listenTcpInRangePort(port, TCP_MIN_PORT, TCP_MAX_PORT)
 	if err != nil {
 		return nil, err
 	}
-	listener, err := net.ListenTCP("tcp", laddr)
+	// hook here
+	err = hook(HOOK_TCP_POST_CONNECT, []string{
+		"PORT=" + strconv.Itoa(port),
+		"CLIENT_ADDRESS=" + tunnel.wsconn.RemoteAddr().String(),
+	})
 	if err != nil {
-		return nil, err
+		listener.Close()
+		return
 	}
+
 	go func() {
 		for {
 			rconn, err := listener.AcceptTCP()
@@ -95,7 +127,7 @@ func NewTcpProxyListener(tunnel *Tunnel, listenAddress string) (lis net.Listener
 				break
 			}
 			// find proxy to where
-			log.Println(laddr, "Receive new connections from", rconn.RemoteAddr())
+			log.Println("Receive new connections from", rconn.RemoteAddr())
 			lconn, err := tunnel.RequestNewConn(rconn.RemoteAddr().String())
 			if err != nil {
 				log.Println("request new conn err:", err)
@@ -115,14 +147,14 @@ func NewTcpProxyListener(tunnel *Tunnel, listenAddress string) (lis net.Listener
 	return listener, nil
 }
 
-func FigureListenAddress(r *http.Request) (protocal, subdomain string, port int) {
+func parseConnectRequest(r *http.Request) (protocal, subdomain string, port int) {
 	protocal = r.FormValue("protocal")
 	if protocal == "" {
 		protocal = "http"
 	}
 	reqPort := r.FormValue("port")
 	if reqPort == "" {
-		port = 12345
+		port = 0
 	} else {
 		fmt.Sscanf(reqPort, "%d", &port)
 	}
@@ -208,7 +240,7 @@ func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.
 func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// read listen port from request
-		protocal, subdomain, port := FigureListenAddress(r)
+		protocal, subdomain, port := parseConnectRequest(r)
 		log.Println("proxy listen addr:", protocal, subdomain, port)
 
 		// create websocket connection
@@ -224,8 +256,8 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 		// TCP: create new port to listen
 		switch protocal {
 		case "tcp":
-			proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
-			listener, err := NewTcpProxyListener(tunnel, proxyAddr)
+			// proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
+			listener, err := NewTcpProxyListener(tunnel, port)
 			if err != nil {
 				http.Error(w, err.Error(), 501)
 				return

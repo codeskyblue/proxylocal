@@ -1,0 +1,12 @@
+#!/bin/bash -
+#
+# hook tcp post connect
+#
+# envs:
+# - PORT
+#	server created port
+#	ex: 12345
+# - CLIENT_ADDRESS  
+#	ex: 10.10.0.1:6730
+
+
