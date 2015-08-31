@@ -56,6 +56,17 @@ Recv Message: Local server is now publicly available via:
 http://testhost.proxylocal.com/
 ```
 
+### TCP的代理方法
+
+```
+$ proxylocal tcp://localhost:5037
+Recv Message: Local tcp conn is now publicly available via:
+proxylocal.xyz:13000
+```
+
+### 环境变量
+server address地址 `PXL_SERVER_ADDR`
+
 ## 没想通的事情
 
 `proxylocal www.baidu.com` 为什么不可以，而 `proxylocal localhost:8000` 却没问题

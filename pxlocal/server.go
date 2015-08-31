@@ -259,13 +259,15 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			// proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
 			listener, err := NewTcpProxyListener(tunnel, port)
 			if err != nil {
+				log.Warnf("new tcp proxy err: %v", err)
 				http.Error(w, err.Error(), 501)
 				return
 			}
 			defer listener.Close()
 			host, _, _ := net.SplitHostPort(ps.domain)
+			_, port, _ := net.SplitHostPort(listener.Addr().String())
 			wsSendMessage(conn, fmt.Sprintf(
-				"Local tcp conn is now publicly available via:\n%s:%d\n", host, port))
+				"Local tcp conn is now publicly available via:\n%v:%v\n", host, port))
 		case "http", "https":
 			log.Println("start http proxy")
 			tr := &http.Transport{

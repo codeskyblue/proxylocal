@@ -13,7 +13,7 @@ const (
 func hook(scriptName string, envs []string) error {
 	scriptPath := filepath.Join("hooks", scriptName)
 	if _, err := os.Stat(scriptPath); err == nil {
-		cmd := exec.Command(HOOK_TCP_POST_CONNECT)
+		cmd := exec.Command(scriptPath)
 		cmd.Env = os.Environ()
 		cmd.Env = append(cmd.Env, envs...)
 		cmd.Stdout = os.Stdout

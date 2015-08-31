@@ -22,8 +22,13 @@ func main() {
 	var subDomain string
 	var domain string
 	var debug bool
+
+	var defaultServerAddr = os.Getenv("PXL_SERVER_ADDR")
+	if defaultServerAddr == "" {
+		defaultServerAddr = "proxylocal.xyz"
+	}
 	flag.BoolVar(&serverMode, "server", false, "run in server mode")
-	flag.StringVar(&serverAddr, "server-addr", "proxylocal.xyz:8080", "server address")
+	flag.StringVar(&serverAddr, "server-addr", defaultServerAddr, "server address")
 	flag.StringVar(&domain, "server-domain", "", "proxy server domain name, optional")
 	flag.StringVar(&subDomain, "subdomain", "", "proxy subdomain, used for http")
 	flag.BoolVar(&debug, "debug", false, "open debug mode")

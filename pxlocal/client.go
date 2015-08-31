@@ -52,7 +52,7 @@ func StartAgent(debug bool, pURL *url.URL, subdomain, serverAddr string, remoteL
 	for {
 		var msg Msg
 		if err := wsclient.ReadJSON(&msg); err != nil {
-			println("client exit")
+			fmt.Println("client exit: " + err.Error())
 			break
 		}
 		log.Debug("recv:", msg)
