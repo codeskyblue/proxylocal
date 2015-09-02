@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -12,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/codeskyblue/proxylocal/pxlocal"
+	"github.com/qiniu/log"
 )
 
 func main() {
@@ -43,6 +43,11 @@ func main() {
 		flag.Usage()
 		return
 	}
+	if !debug {
+		log.SetOutputLevel(log.Linfo)
+	} else {
+		log.SetOutputLevel(log.Ldebug)
+	}
 
 	if serverMode {
 		_, port, _ := net.SplitHostPort(serverAddr)
@@ -72,5 +77,5 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println("proxy URL:", pURL)
-	pxlocal.StartAgent(debug, pURL, subDomain, serverAddr, proxyPort)
+	pxlocal.StartAgent(pURL, subDomain, serverAddr, proxyPort)
 }

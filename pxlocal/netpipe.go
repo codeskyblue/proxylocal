@@ -1,9 +1,10 @@
 package pxlocal
 
 import (
-	"log"
 	"net"
 	"sync"
+
+	"github.com/qiniu/log"
 )
 
 //A proxy represents a pair of connections and their state
@@ -127,7 +128,7 @@ func (p *ProxyConn) pipe(src, dst net.Conn) chan error {
 				log.Printf("Write failed '%s'\n", err)
 				return
 			}
-			log.Println("pipe --> local:", islocal, "write:", n) //, string(b[:n]))
+			log.Debug("pipe --> local:", islocal, "write:", n) //, string(b[:n]))
 			if islocal {
 				p.sentBytes += uint64(n)
 				p.stats.sentBytes += uint64(n)
