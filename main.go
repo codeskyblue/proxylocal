@@ -14,6 +14,10 @@ import (
 	"github.com/qiniu/log"
 )
 
+const (
+	VERSION = "0.1"
+)
+
 func main() {
 	var serverMode bool
 	var serverAddr string
@@ -35,7 +39,7 @@ func main() {
 	flag.IntVar(&proxyPort, "port", 0, "proxy server listen port, used for tcp")
 
 	flag.Usage = func() {
-		fmt.Printf("Usage: %s [OPTIONS] <port | host:port>\n", os.Args[0])
+		fmt.Printf("proxylocal version: %v\nUsage: %s [OPTIONS] <port | host:port>\n", VERSION, os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
