@@ -48,9 +48,10 @@ type Msg struct {
 type Tunnel struct {
 	wsconn *websocket.Conn
 	sync.Mutex
-	index    int64
-	freeport *FreePort
+	index int64
 }
+
+var freeport = NewFreePort(TCP_MIN_PORT, TCP_MAX_PORT)
 
 func (t *Tunnel) uniqName() string {
 	t.Lock()
@@ -82,30 +83,6 @@ func (t *Tunnel) generateTransportDial() func(network, addr string) (net.Conn, e
 	}
 }
 
-/*
-func listenTcpInRangePort(port, minPort, maxPort int) (finnalPort int, lis *net.TCPListener, err error) {
-	if port != 0 {
-		laddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
-		if err != nil {
-			return 0, nil, err
-		}
-		lis, err = net.ListenTCP("tcp", laddr)
-		return port, lis, err
-	}
-	for port = minPort; port < maxPort; port++ {
-		laddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
-		if err != nil {
-			return 0, nil, err
-		}
-		lis, err := net.ListenTCP("tcp", laddr)
-		if err == nil {
-			return port, lis, nil
-		}
-	}
-	return 0, nil, errors.New("No port avaliable")
-}
-*/
-
 // Listen and forward connections
 func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, err error) {
 	var laddr *net.TCPAddr
@@ -113,7 +90,7 @@ func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, e
 		laddr, _ = net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(port))
 		listener, err = net.ListenTCP("tcp", laddr)
 	} else {
-		laddr, listener, err = tunnel.freeport.ListenTCP()
+		laddr, listener, err = freeport.ListenTCP()
 	}
 	if err != nil {
 		return nil, err
@@ -267,8 +244,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 		log.Println(conn.RemoteAddr())
 
 		tunnel := &Tunnel{
-			wsconn:   conn,
-			freeport: NewFreePort(TCP_MIN_PORT, TCP_MAX_PORT),
+			wsconn: conn,
 		}
 		// TCP: create new port to listen
 		switch protocal {
