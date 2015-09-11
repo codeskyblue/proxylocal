@@ -1,4 +1,5 @@
 # proxylocal
+[![gorelease](https://dn-gorelease.qbox.me/gorelease-download-blue.svg)](http://gorelease.herokuapp.com/dn-gobuild5.qbox.me/proxylocal/master)
 
 Just for study how to proxy local server to public network.
 
