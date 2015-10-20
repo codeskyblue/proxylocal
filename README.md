@@ -1,18 +1,23 @@
 # proxylocal
 [![gorelease](https://dn-gorelease.qbox.me/gorelease-download-blue.svg)](http://gorelease.herokuapp.com/codeskyblue/proxylocal)
 
-Just for study how to proxy local server to public network.
+Proxy local service to public.
 
-反向代理服务，使内网的服务能在在外网被访问到。
+> I want to expose a local server behide a NAT or firewall to the internet.
 
-目前服务是放在了 <http://proxylocal.xyz:8080>, 当前只是试验阶段。
+There are some similar service.
+
+* <https://ngrok.com/>
+* <http://www.tunnel.mobi/> Use ngrok, VPS in china.
+* <https://forwardhq.com/> Need pay price to get service.
+
+At the beginning this is just for study how to proxy local server to public network. Now it can be stable use.
 
 这个东西目前看来确实是个很不错的东西，可以调试微信，可以把自家路由器的东西放到外网。还可以通过它的tcp转发功能，远程调试家中的树莓派。用途多多
 
+不过服务器需要自己搭
+
 ## Installation
-
-proxylocal is a tool that runs on the command line.
-
 Build from source code
 
 ```
@@ -22,41 +27,26 @@ go get -v github.com/codeskyblue/proxylocal
 <del>Or [download](https://github.com/codeskyblue/proxylocal/releases) according to your platform.</del>
 
 ## Usage
+Run server in a public network, listen in port 8080 (Assuming your ip is 122.2.2.1)
 
-Assume you are running your local web-server on port 3000. To make it publicly available run:
+	proxylocal --listen 8080
 
-```
-$ proxylocal 3000
-Recv Message: Local server is now publicly available via:
-http://v61ny.t.proxylocal.xyz:8080
-```
+Assume you are running your local tcp-server on port 5037. To make it publicly available run:
 
-Now you can open this link in your favorite browser and request will be proxied to your local web-server.
+	proxylocal --server 122.2.2.1:8080 --proto tcp 5037
 
-Also you can specify preferred host you want to use, e.g.:
+If this is a web server, only need to update `--proto`
+	
+	proxylocal --server 122.2.2.1:8080 --proto http 5037
 
-```
-$ proxylocal -subdomain testhost 3000
-Recv Message: Local server is now publicly available via:
-http://testhost.proxylocal.com/
-```
+	# expects output
+	proxy URL: http://localhost:5037
+	Recv Message: Local server is now publicly available via:
+	http://wn8yn.t.localhost
 
-### TCP的代理方法
 
-```
-$ proxylocal -proto tcp 5037
-Recv Message: Local tcp conn is now publicly available via:
-proxylocal.xyz:13000
-```
-
-### 环境变量
-server address地址 `PXL_SERVER_ADDR`
-
-### Alternative
-There are some good website which offer proxy service.
-
-* <http://www.tunnel.mobi/> Use ngrok, VPS in china.
-* <https://forwardhq.com/> Need pay price to get service.
+### Environment
+Server address default from env-var `PXL_SERVER_ADDR`
 
 ## LICENSE
 MIT(LICENSE)

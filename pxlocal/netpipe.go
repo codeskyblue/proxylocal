@@ -27,7 +27,7 @@ func closeRead(c net.Conn) error {
 	}); ok {
 		return x.CloseRead()
 	} else {
-		log.Println("force close", c)
+		log.Debug("force close", c)
 		return c.Close()
 	}
 	// if tcpconn, ok := c.(*net.TCPConn); ok {
@@ -44,13 +44,13 @@ func closeWrite(c net.Conn) error {
 	}); ok {
 		return x.CloseWrite()
 	} else {
-		log.Println("force close", c)
+		log.Debug("force close", c)
 		return c.Close()
 	}
 	// if tcpconn, ok := c.(*net.TCPConn); ok {
 	// 	return tcpconn.CloseWrite()
 	// } else {
-	// 	log.Println("force close", c)
+	// 	log.Debug("force close", c)
 	// 	// return c.Close()
 	// 	return nil
 	// }
@@ -89,7 +89,7 @@ func (p *ProxyConn) start() {
 		<-ch1
 		closeRead(p.lconn)
 		closeWrite(p.rconn)
-		log.Println("close local -> remote")
+		log.Debug("close local -> remote")
 		wg.Done()
 	}()
 	go func() {
@@ -97,7 +97,7 @@ func (p *ProxyConn) start() {
 		<-ch2
 		closeRead(p.rconn)
 		closeWrite(p.lconn)
-		log.Println("close remote -> local")
+		log.Debug("close remote -> local")
 		wg.Done()
 	}()
 	wg.Wait()

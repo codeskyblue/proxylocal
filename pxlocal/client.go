@@ -90,7 +90,7 @@ func handleRevConn(pURL *url.URL, lis net.Listener) {
 				log.Errorf("accept error: %v", err)
 				return
 			}
-			log.Println("dial local:", pURL)
+			log.Info("dial local:", pURL)
 			lconn, err := net.Dial("tcp", pURL.Host)
 			if err != nil {
 				// wsclient
