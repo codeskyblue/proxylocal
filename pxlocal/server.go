@@ -142,7 +142,7 @@ func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, e
 func parseConnectRequest(r *http.Request) (protocol, subdomain string, port int) {
 	protocol = r.FormValue("protocol")
 	if protocol == "" {
-		protocal = r.FormValue("protocal") // The last version has type error
+		protocol = r.FormValue("protocal") // The last version has type error
 	}
 	if protocol == "" {
 		protocol = "http"
