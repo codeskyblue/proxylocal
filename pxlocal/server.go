@@ -28,6 +28,7 @@ const (
 
 	TYPE_NEWCONN = iota + 1
 	TYPE_MESSAGE
+	TYPE_IDLE
 )
 
 var (
@@ -138,11 +139,15 @@ func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, e
 	return listener, nil
 }
 
-func parseConnectRequest(r *http.Request) (protocal, subdomain string, port int) {
-	protocal = r.FormValue("protocal")
-	if protocal == "" {
-		protocal = "http"
+func parseConnectRequest(r *http.Request) (protocol, subdomain string, port int) {
+	protocol = r.FormValue("protocol")
+	if protocol == "" {
+		protocal = r.FormValue("protocal") // The last version has type error
 	}
+	if protocol == "" {
+		protocol = "http"
+	}
+
 	reqPort := r.FormValue("port")
 	if reqPort == "" {
 		port = 0
@@ -231,8 +236,8 @@ func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.
 func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// read listen port from request
-		protocal, subdomain, port := parseConnectRequest(r)
-		log.Println("proxy listen addr:", protocal, subdomain, port)
+		protocol, subdomain, port := parseConnectRequest(r)
+		log.Debugf("proxy listen proto: %v, subdomain: %v port: %v", protocol, subdomain, port)
 
 		// create websocket connection
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -241,13 +246,14 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			return
 		}
 		defer conn.Close()
-		log.Println(conn.RemoteAddr())
+		log.Debug("remote client addr:", conn.RemoteAddr())
 
 		tunnel := &Tunnel{
 			wsconn: conn,
 		}
 		// TCP: create new port to listen
-		switch protocal {
+		log.Infof("New %s proxy for %v", protocol, conn.RemoteAddr())
+		switch protocol {
 		case "tcp":
 			// proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
 			listener, err := NewTcpProxyListener(tunnel, port)
@@ -257,12 +263,10 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 				return
 			}
 			defer listener.Close()
-			host, _, _ := net.SplitHostPort(ps.domain)
 			_, port, _ := net.SplitHostPort(listener.Addr().String())
 			wsSendMessage(conn, fmt.Sprintf(
-				"Local tcp conn is now publicly available via:\n%v:%v\n", host, port))
+				"Local tcp conn is now publicly available via:\n%v:%v\n", ps.domain, port))
 		case "http", "https":
-			log.Println("start http proxy")
 			tr := &http.Transport{
 				Dial: tunnel.generateTransportDial(),
 			}
@@ -296,17 +300,17 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 				ps.Unlock()
 			}()
 		default:
-			log.Println("unknown protocal:", protocal)
+			log.Println("unknown protocol:", protocol)
 			return
 		}
 		// HTTP: use httputil.ReverseProxy
 		for {
 			var msg Msg
 			if err := conn.ReadJSON(&msg); err != nil {
-				log.Println(err)
+				log.Warn(err)
 				break
 			}
-			log.Println("recv json:", msg)
+			log.Debug("recv json:", msg)
 		}
 	}
 }
@@ -317,10 +321,10 @@ func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// http://stackoverflow.com/questions/6899069/why-are-request-url-host-and-scheme-blank-in-the-development-server
 	r.URL.Scheme = "http" // ??
 	r.URL.Host = r.Host   // ??
-	log.Println("URL path:", r.URL.Path)
-	log.Printf("pxies: %v", p.revProxies)
+	log.Debug("URL path:", r.URL.Path)
+	log.Debugf("proxy lists: %v", p.revProxies)
 	if rpx, ok := p.revProxies[r.Host]; ok {
-		log.Println("server http rev proxy")
+		log.Debug("server http rev proxy")
 		rpx.ServeHTTP(w, r)
 		return
 	}

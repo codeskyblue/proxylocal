@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/qiniu/log"
@@ -31,7 +32,7 @@ func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort in
 	}
 	// specify remote listen port
 	query := sURL.Query()
-	query.Add("protocal", pURL.Scheme)
+	query.Add("protocol", pURL.Scheme)
 	query.Add("subdomain", subdomain)
 	if remoteListenPort != 0 {
 		query.Add("port", strconv.Itoa(remoteListenPort))
@@ -55,7 +56,21 @@ func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort in
 		// sURL: serverURL
 		rnl := NewRevNetListener()
 		go handleRevConn(pURL, rnl)
+		go idleWsSend(wsclient)
 		handleWsMsg(msg, sURL, rnl)
+	}
+}
+
+func idleWsSend(wsc *websocket.Conn) {
+	var msg Msg
+	msg.Type = TYPE_IDLE
+	msg.Name = "idle"
+	for {
+		if err := wsc.WriteJSON(&msg); err != nil {
+			log.Warnf("write idle msg error: %v", err)
+			break
+		}
+		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -117,7 +132,7 @@ func handleRevConn(pURL *url.URL, lis net.Listener) {
 		}
 		http.Serve(lis, rp)
 	default:
-		log.Println("Unknown protocal:", pURL.Scheme)
+		log.Println("Unknown protocol:", pURL.Scheme)
 	}
 }
 

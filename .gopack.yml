@@ -1,0 +1,11 @@
+author: codeskyblue
+description: proxy local to public
+os: darwin linux windows
+includes:
+  - README.md
+  - LICENSE
+excludes:
+  - \.git
+script:
+  - go get github.com/tools/godep
+  - godep go build

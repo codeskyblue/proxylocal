@@ -14,10 +14,6 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-const (
-	VERSION = "0.1"
-)
-
 type GlobalConfig struct {
 	Server struct {
 		Enable bool
@@ -50,12 +46,12 @@ func init() {
 	// flag.StringVar(&cfg.Proto, "proto", "http", "default protocal, http or tcp")
 	// flag.IntVar(&cfg.ProxyPort, "port", 0, "proxy server listen port, used for tcp")
 
-	kingpin.Flag("proto", "Default protocol, http or tcp").Default("http").StringVar(&cfg.Proto)
+	kingpin.Flag("proto", "Default protocol, http or tcp").Default("http").EnumVar(&cfg.Proto, "http", "tcp") // .StringVar(&cfg.Proto)
 	kingpin.Flag("subdomain", "Proxy subdomain, used for http").StringVar(&cfg.SubDomain)
 	kingpin.Flag("remote-port", "Proxy server listen port, only used in tcp").IntVar(&cfg.ProxyPort)
 	kingpin.Flag("server", "Specify server address").OverrideDefaultFromEnvar("PXL_SERVER_ADDR").StringVar(&cfg.Server.Addr)
 
-	kingpin.Flag("listen", "Run in server mode").BoolVar(&cfg.Server.Enable)
+	kingpin.Flag("listen", "Run in server mode").Short('l').BoolVar(&cfg.Server.Enable)
 	kingpin.Flag("domain", "Proxy server mode domain name, optional").StringVar(&cfg.Server.Domain)
 
 	kingpin.Arg("local", "Local address").Required().StringVar(&localAddr)
@@ -77,6 +73,8 @@ func parseURL(addr string, defaultProto string) (u *url.URL, err error) {
 }
 
 func main() {
+	kingpin.Version(VERSION)
+	kingpin.CommandLine.HelpFlag.Short('h')
 	kingpin.Parse()
 
 	if !cfg.Server.Enable && localAddr == "" {
