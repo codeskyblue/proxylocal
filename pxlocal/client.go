@@ -44,6 +44,7 @@ func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort in
 		log.Fatal(err)
 	}
 	defer wsclient.Close()
+	go idleWsSend(wsclient)
 
 	for {
 		var msg Msg
@@ -56,7 +57,6 @@ func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort in
 		// sURL: serverURL
 		rnl := NewRevNetListener()
 		go handleRevConn(pURL, rnl)
-		go idleWsSend(wsclient)
 		handleWsMsg(msg, sURL, rnl)
 	}
 }

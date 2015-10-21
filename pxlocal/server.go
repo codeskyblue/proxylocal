@@ -115,19 +115,19 @@ func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, e
 		for {
 			rconn, err := listener.AcceptTCP()
 			if err != nil {
-				log.Println(err)
+				log.Warn(err)
 				break
 			}
 			// find proxy to where
-			log.Println("Receive new connections from", rconn.RemoteAddr())
+			log.Debug("Receive new connections from", rconn.RemoteAddr())
 			lconn, err := tunnel.RequestNewConn(rconn.RemoteAddr().String())
 			if err != nil {
-				log.Println("request new conn err:", err)
+				log.Debug("request new conn err:", err)
 				rconn.Close()
 				continue
 			}
 
-			log.Println("request new conn:", lconn, err)
+			log.Debug("request new conn:", lconn, err)
 			pc := &ProxyConn{
 				lconn: lconn,
 				rconn: rconn,
@@ -188,7 +188,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var proxyFor = r.Header.Get("X-Proxy-For")
-	log.Println("proxy name:", proxyFor)
+	log.Println("X-Proxy-For client name:", r.RemoteAddr, proxyFor)
 
 	connCh, ok := namedConnection[proxyFor]
 	if !ok {
@@ -201,9 +201,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		connCh <- nil
 		return
 	}
-	if _, ok := hjconn.(*net.TCPConn); ok {
-		log.Println("Hijack is tcp conn")
-	}
+	//if _, ok := hjconn.(*net.TCPConn); ok {
+	//log.Println("Hijack is tcp conn")
+	//}
 
 	conn := NewHijackReadWriteCloser(hjconn.(*net.TCPConn), bufrw)
 	connCh <- conn
@@ -300,7 +300,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 				ps.Unlock()
 			}()
 		default:
-			log.Println("unknown protocol:", protocol)
+			log.Warn("unknown protocol:", protocol)
 			return
 		}
 		// HTTP: use httputil.ReverseProxy
@@ -310,13 +310,13 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 				log.Warn(err)
 				break
 			}
-			log.Debug("recv json:", msg)
+			log.Info("recv json:", msg)
 		}
 	}
 }
 
 func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Println("request info:", r.Method, r.Host, r.RequestURI)
+	//log.Println("request info:", r.Method, r.Host, r.RequestURI)
 	//host, _, _ := net.SplitHostPort(r.Host)
 	// http://stackoverflow.com/questions/6899069/why-are-request-url-host-and-scheme-blank-in-the-development-server
 	r.URL.Scheme = "http" // ??
