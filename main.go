@@ -33,23 +33,15 @@ var localAddr string
 func init() {
 	var defaultServerAddr = os.Getenv("PXL_SERVER_ADDR")
 	if defaultServerAddr == "" {
-		defaultServerAddr = "proxylocal.xyz"
+		defaultServerAddr = "proxylocal.xyz:80"
 	}
 
 	kingpin.Flag("debug", "Enable debug mode.").BoolVar(&cfg.Debug)
 
-	// flag.BoolVar(&cfg.Debug, "debug", false, "open debug mode")
-	// flag.BoolVar(&cfg.Server.Enable, "server", false, "run in server mode")
-	// flag.StringVar(&cfg.Server.Addr, "server-addr", defaultServerAddr, "server address")
-	// flag.StringVar(&cfg.Server.Domain, "server-domain", "", "proxy server domain name, optional")
-	// flag.StringVar(&cfg.SubDomain, "subdomain", "", "proxy subdomain, used for http")
-	// flag.StringVar(&cfg.Proto, "proto", "http", "default protocal, http or tcp")
-	// flag.IntVar(&cfg.ProxyPort, "port", 0, "proxy server listen port, used for tcp")
-
 	kingpin.Flag("proto", "Default protocol, http or tcp").Default("http").EnumVar(&cfg.Proto, "http", "tcp") // .StringVar(&cfg.Proto)
 	kingpin.Flag("subdomain", "Proxy subdomain, used for http").StringVar(&cfg.SubDomain)
 	kingpin.Flag("remote-port", "Proxy server listen port, only used in tcp").IntVar(&cfg.ProxyPort)
-	kingpin.Flag("server", "Specify server address").OverrideDefaultFromEnvar("PXL_SERVER_ADDR").StringVar(&cfg.Server.Addr)
+	kingpin.Flag("server", "Specify server address").OverrideDefaultFromEnvar("PXL_SERVER_ADDR").Default(defaultServerAddr).StringVar(&cfg.Server.Addr)
 
 	kingpin.Flag("listen", "Run in server mode").Short('l').BoolVar(&cfg.Server.Enable)
 	kingpin.Flag("domain", "Proxy server mode domain name, optional").StringVar(&cfg.Server.Domain)
