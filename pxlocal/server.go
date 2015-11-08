@@ -310,7 +310,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 				log.Warn(err)
 				break
 			}
-			log.Info("recv json:", msg)
+			log.Debug("recv json:", msg)
 		}
 	}
 }

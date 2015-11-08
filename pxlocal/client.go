@@ -31,6 +31,7 @@ func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort in
 		log.Fatal(err)
 	}
 	// specify remote listen port
+	sURL.Scheme = "ws"
 	query := sURL.Query()
 	query.Add("protocol", pURL.Scheme)
 	query.Add("subdomain", subdomain)
@@ -39,6 +40,7 @@ func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort in
 	}
 	sURL.RawQuery = query.Encode()
 
+	log.Debug(sURL)
 	wsclient, _, err := websocket.NewClient(conn, sURL, nil, 1024, 1024)
 	if err != nil {
 		log.Fatal(err)
