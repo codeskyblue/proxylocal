@@ -1,7 +1,6 @@
 # proxylocal
-<del>[![gorelease](https://dn-gorelease.qbox.me/gorelease-download-blue.svg)](http://gorelease.herokuapp.com/codeskyblue/proxylocal)</del>
-
-Very suggest to compile gorelease use `go1.4`. I donot know why, but use `go1.5`, the proxylocal got a very very bad performance.
+[![Build Status](https://travis-ci.org/codeskyblue/proxylocal.svg?branch=master)](https://travis-ci.org/codeskyblue/proxylocal)
+[![gorelease](https://dn-gorelease.qbox.me/gorelease-download-blue.svg)](http://gorelease.herokuapp.com/codeskyblue/proxylocal)
 
 Proxy local service to public.
 
@@ -10,9 +9,14 @@ Proxy local service to public.
 There are some similar service.
 
 * <http://localtunnel.me/> Write in nodejs. Very good one.
+* <https://pagekite.net/> Write in python.
 * <https://ngrok.com/> Blocked by GFW.
 * <https://forwardhq.com/> Need pay price to get service.
 * <http://www.tunnel.mobi/> Server seems down. Use ngrok, VPS in china.
+
+Binary can be download from [gorelease](http://gorelease.herokuapp.com/codeskyblue/proxylocal)
+
+Very suggest to compile use `go1.4`. I donot know why, but use `go1.5`, the proxylocal got a very very bad performance.
 
 At the beginning this is just for study how to proxy local server to public network. Now it can be stable use.
 
