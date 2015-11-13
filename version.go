@@ -1,10 +1,13 @@
+// Update in CHNAGELOG.md
+
 package main
 
-var VERSION = "1.1.0"
+import (
+	"fmt"
+	"runtime"
+)
 
-/*
-- 1.1
+const PXVER = "1.1.0"
 
-    Add --data support, update hooks doc
-
-*/
+var VERSION = fmt.Sprintf("Proxylocal version %s, %s\nHomepage: %s",
+	PXVER, runtime.Version(), "https://github.com/codeskyblue/proxylocal")
