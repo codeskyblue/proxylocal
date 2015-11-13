@@ -60,4 +60,4 @@ There are examples you found in [hooks](hooks)
 Server address default from env-var `PXL_SERVER_ADDR`
 
 ## LICENSE
-MIT(LICENSE)
+[MIT LICENSE](LICENSE)
