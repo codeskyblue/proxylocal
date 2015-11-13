@@ -1,6 +1,6 @@
 language: go
 go:
-  - 1.5
+  - 1.4
 before_install:
   - go get -v
 script:

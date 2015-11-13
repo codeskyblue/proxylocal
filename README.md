@@ -1,5 +1,7 @@
 # proxylocal
-[![gorelease](https://dn-gorelease.qbox.me/gorelease-download-blue.svg)](http://gorelease.herokuapp.com/codeskyblue/proxylocal)
+<del>[![gorelease](https://dn-gorelease.qbox.me/gorelease-download-blue.svg)](http://gorelease.herokuapp.com/codeskyblue/proxylocal)</del>
+
+Very suggest to compile gorelease use `go1.4`. I donot know why, but use `go1.5`, the proxylocal got a very very bad performance.
 
 Proxy local service to public.
 
@@ -16,10 +18,10 @@ At the beginning this is just for study how to proxy local server to public netw
 
 这个东西目前看来确实是个很不错的东西，可以调试微信，可以把自家路由器的东西放到外网。还可以通过它的tcp转发功能，远程调试家中的树莓派。用途多多
 
-不过服务器需要自己搭
+不过服务器最好自己搭. 如果希望贡献出来你的server可以发起个Issue.
 
 ## Installation
-Build from source code
+Build from source code, (use [godep](https://github.com/tools/godep) is your build got some error)
 
 ```
 go get -v github.com/codeskyblue/proxylocal
