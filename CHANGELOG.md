@@ -9,3 +9,6 @@
 - 1.1.0
 
     Add --data support, update hooks doc
+    Client add redial
+    Clean useless code.
+    Code speed optimize

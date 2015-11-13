@@ -5,9 +5,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/codeskyblue/proxylocal/pxlocal"
 	"github.com/qiniu/log"
@@ -32,18 +32,13 @@ var cfg GlobalConfig
 var localAddr string
 
 func init() {
-	var defaultServerAddr = os.Getenv("PXL_SERVER_ADDR")
-	if defaultServerAddr == "" {
-		defaultServerAddr = "proxylocal.xyz:80"
-	}
-
 	kingpin.Flag("debug", "Enable debug mode.").BoolVar(&cfg.Debug)
 
-	kingpin.Flag("proto", "Default protocol, http or tcp").Default("http").EnumVar(&cfg.Proto, "http", "tcp") // .StringVar(&cfg.Proto)
+	kingpin.Flag("proto", "Default protocol, http or tcp").Default("http").Short('p').EnumVar(&cfg.Proto, "http", "tcp") // .StringVar(&cfg.Proto)
 	kingpin.Flag("subdomain", "Proxy subdomain, used for http").StringVar(&cfg.SubDomain)
 	kingpin.Flag("remote-port", "Proxy server listen port, only used in tcp").IntVar(&cfg.ProxyPort)
 	kingpin.Flag("data", "Data send to server, can be anything").StringVar(&cfg.Data)
-	kingpin.Flag("server", "Specify server address").OverrideDefaultFromEnvar("PXL_SERVER_ADDR").Default(defaultServerAddr).StringVar(&cfg.Server.Addr)
+	kingpin.Flag("server", "Specify server address").OverrideDefaultFromEnvar("PXL_SERVER_ADDR").Default("proxylocal.xyz").StringVar(&cfg.Server.Addr)
 
 	kingpin.Flag("listen", "Run in server mode").Short('l').BoolVar(&cfg.Server.Enable)
 	kingpin.Flag("domain", "Proxy server mode domain name, optional").StringVar(&cfg.Server.Domain)
@@ -82,12 +77,13 @@ func main() {
 		log.SetOutputLevel(log.Ldebug)
 	}
 
-	pURL, err := parseURL(localAddr, cfg.Proto)
+	pURL, err := pxlocal.ParseURL(localAddr, pxlocal.URLOpts{DefaultScheme: cfg.Proto})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if cfg.Server.Enable {
+		//sURL, err := pxlocal.ParseURL(localAddr, &pxlocal.URLOpts{DefaultScheme: cfg.Proto})
 		_, port, _ := net.SplitHostPort(pURL.Host)
 		if port == "" {
 			port = "80"
@@ -101,17 +97,33 @@ func main() {
 		log.Fatal(http.ListenAndServe(addr, ps))
 	}
 
-	// var localAddr = flag.Arg(0)
-	// if !regexp.MustCompile("^(http|https|tcp)://").MatchString(localAddr) {
-	// 	if _, err := strconv.Atoi(localAddr); err == nil { // only contain port
-	// 		localAddr = "localhost:" + localAddr
-	// 	} else {
-	// 		//localAddr += ":80"
-	// 	}
-	// 	localAddr = cfg.Proto + "://" + localAddr
-	// }
+	sURL, err := pxlocal.ParseURL(cfg.Server.Addr)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// pURL, err := url.Parse(localAddr)
 	fmt.Println("proxy URL:", pURL)
-	pxlocal.StartAgent(pURL, cfg.SubDomain, cfg.Server.Addr, cfg.ProxyPort, cfg.Data)
+	failCount := 0
+	for {
+		err = pxlocal.StartAgent(pURL, sURL, pxlocal.AgentOptions{
+			Subdomain:        cfg.SubDomain,
+			RemoteListenPort: cfg.ProxyPort,
+			Data:             cfg.Data,
+		})
+		if err == pxlocal.ErrWebsocketBroken {
+			fmt.Println("Reconnect after 5 seconds ...")
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		if err == pxlocal.ErrDialTCP {
+			if failCount < 13 {
+				failCount += 1
+			}
+			wait := 7 + failCount
+			fmt.Printf("Reconnect after %d seconds ...\n", wait)
+			time.Sleep(time.Duration(wait) * time.Second)
+			continue
+		}
+		log.Fatal(err)
+	}
 }
