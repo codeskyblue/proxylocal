@@ -6,7 +6,14 @@
 # - PORT
 #	server created port
 #	ex: 12345
-# - CLIENT_ADDRESS  
+# - REMOTE_ADDR
 #	ex: 10.10.0.1:6730
+# - REMOTE_DATA
+#   data which send from proxylocal client
+#   ex: hello world
 
 
+#env
+echo "PORT=$PORT"
+echo "REMOTE_ADDR=$REMOTE_ADDR"
+echo "REMOTE_DATA=$REMOTE_DATA"

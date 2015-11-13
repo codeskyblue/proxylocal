@@ -5,3 +5,7 @@
 - 1.0.2
 
 	update godeps (especially grilla/websocket)
+
+- 1.1.0
+
+    Add --data support, update hooks doc

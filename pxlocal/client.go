@@ -14,7 +14,7 @@ import (
 	"github.com/qiniu/log"
 )
 
-func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort int) {
+func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort int, data string) {
 	log.Debug("start proxy", pURL)
 	if !regexp.MustCompile("^http[s]://").MatchString(serverAddr) {
 		serverAddr = "http://" + serverAddr
@@ -35,6 +35,7 @@ func StartAgent(pURL *url.URL, subdomain, serverAddr string, remoteListenPort in
 	query := sURL.Query()
 	query.Add("protocol", pURL.Scheme)
 	query.Add("subdomain", subdomain)
+	query.Add("data", data)
 	if remoteListenPort != 0 {
 		query.Add("port", strconv.Itoa(remoteListenPort))
 	}

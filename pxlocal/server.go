@@ -48,6 +48,7 @@ type Msg struct {
 
 type Tunnel struct {
 	wsconn *websocket.Conn
+	data   string
 	sync.Mutex
 	index int64
 }
@@ -104,7 +105,9 @@ func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, e
 	// hook here
 	err = hook(HOOK_TCP_POST_CONNECT, []string{
 		"PORT=" + strconv.Itoa(port),
+		"REMOTE_ADDR=" + tunnel.wsconn.RemoteAddr().String(),
 		"CLIENT_ADDRESS=" + tunnel.wsconn.RemoteAddr().String(),
+		"REMOTE_DATA=" + tunnel.data,
 	})
 	if err != nil {
 		listener.Close()
@@ -139,8 +142,15 @@ func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, e
 	return listener, nil
 }
 
-func parseConnectRequest(r *http.Request) (protocol, subdomain string, port int) {
-	protocol = r.FormValue("protocol")
+type RequestInfo struct {
+	Protocol  string
+	Subdomain string
+	Port      int
+	Data      string
+}
+
+func parseConnectRequest(r *http.Request) RequestInfo { //(protocol, subdomain string, port int) {
+	protocol := r.FormValue("protocol")
 	if protocol == "" {
 		protocol = r.FormValue("protocal") // The last version has type error
 	}
@@ -148,14 +158,20 @@ func parseConnectRequest(r *http.Request) (protocol, subdomain string, port int)
 		protocol = "http"
 	}
 
+	var port int
 	reqPort := r.FormValue("port")
 	if reqPort == "" {
 		port = 0
 	} else {
 		fmt.Sscanf(reqPort, "%d", &port)
 	}
-	subdomain = r.FormValue("subdomain")
-	return
+	subdomain := r.FormValue("subdomain")
+	return RequestInfo{
+		Protocol:  protocol,
+		Subdomain: subdomain,
+		Port:      port,
+		Data:      r.FormValue("data"),
+	}
 }
 
 type HijactRW struct {
@@ -236,8 +252,10 @@ func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.
 func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// read listen port from request
-		protocol, subdomain, port := parseConnectRequest(r)
-		log.Debugf("proxy listen proto: %v, subdomain: %v port: %v", protocol, subdomain, port)
+		//protocol, subdomain, port
+		reqInfo := parseConnectRequest(r)
+		log.Debugf("proxy listen proto: %v, subdomain: %v port: %v",
+			reqInfo.Protocol, reqInfo.Subdomain, reqInfo.Port)
 
 		// create websocket connection
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -250,13 +268,14 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 
 		tunnel := &Tunnel{
 			wsconn: conn,
+			data:   reqInfo.Data,
 		}
 		// TCP: create new port to listen
-		log.Infof("New %s proxy for %v", protocol, conn.RemoteAddr())
-		switch protocol {
+		log.Infof("New %s proxy for %v", reqInfo.Protocol, conn.RemoteAddr())
+		switch reqInfo.Protocol {
 		case "tcp":
 			// proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
-			listener, err := NewTcpProxyListener(tunnel, port)
+			listener, err := NewTcpProxyListener(tunnel, reqInfo.Port)
 			if err != nil {
 				log.Warnf("new tcp proxy err: %v", err)
 				http.Error(w, err.Error(), 501)
@@ -279,10 +298,10 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			// should hook here
 			// hook(HOOK_CREATE_HTTP_SUBDOMAIN, subdomain)
 			// generate a uniq domain
-			if subdomain == "" {
-				subdomain = uniqName(5) + ".t"
+			if reqInfo.Subdomain == "" {
+				reqInfo.Subdomain = uniqName(5) + ".t"
 			}
-			pxDomain := subdomain + "." + ps.domain
+			pxDomain := reqInfo.Subdomain + "." + ps.domain
 			log.Println("http px use domain:", pxDomain)
 			if _, exists := ps.revProxies[pxDomain]; exists {
 				wsSendMessage(conn, fmt.Sprintf("subdomain [%s] has already been taken", pxDomain))
@@ -300,7 +319,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 				ps.Unlock()
 			}()
 		default:
-			log.Warn("unknown protocol:", protocol)
+			log.Warn("unknown protocol:", reqInfo.Protocol)
 			return
 		}
 		// HTTP: use httputil.ReverseProxy

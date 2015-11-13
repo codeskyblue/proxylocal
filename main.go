@@ -22,6 +22,7 @@ type GlobalConfig struct {
 	}
 
 	Proto     string
+	Data      string
 	ProxyPort int
 	SubDomain string
 	Debug     bool
@@ -41,6 +42,7 @@ func init() {
 	kingpin.Flag("proto", "Default protocol, http or tcp").Default("http").EnumVar(&cfg.Proto, "http", "tcp") // .StringVar(&cfg.Proto)
 	kingpin.Flag("subdomain", "Proxy subdomain, used for http").StringVar(&cfg.SubDomain)
 	kingpin.Flag("remote-port", "Proxy server listen port, only used in tcp").IntVar(&cfg.ProxyPort)
+	kingpin.Flag("data", "Data send to server, can be anything").StringVar(&cfg.Data)
 	kingpin.Flag("server", "Specify server address").OverrideDefaultFromEnvar("PXL_SERVER_ADDR").Default(defaultServerAddr).StringVar(&cfg.Server.Addr)
 
 	kingpin.Flag("listen", "Run in server mode").Short('l').BoolVar(&cfg.Server.Enable)
@@ -66,6 +68,7 @@ func parseURL(addr string, defaultProto string) (u *url.URL, err error) {
 
 func main() {
 	kingpin.Version(VERSION)
+	kingpin.CommandLine.VersionFlag.Short('v')
 	kingpin.CommandLine.HelpFlag.Short('h')
 	kingpin.Parse()
 
@@ -110,5 +113,5 @@ func main() {
 
 	// pURL, err := url.Parse(localAddr)
 	fmt.Println("proxy URL:", pURL)
-	pxlocal.StartAgent(pURL, cfg.SubDomain, cfg.Server.Addr, cfg.ProxyPort)
+	pxlocal.StartAgent(pURL, cfg.SubDomain, cfg.Server.Addr, cfg.ProxyPort, cfg.Data)
 }

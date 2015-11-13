@@ -7,9 +7,10 @@ Proxy local service to public.
 
 There are some similar service.
 
-* <https://ngrok.com/>
-* <http://www.tunnel.mobi/> Use ngrok, VPS in china.
+* <http://localtunnel.me/> Write in nodejs. Very good one.
+* <https://ngrok.com/> Blocked by GFW.
 * <https://forwardhq.com/> Need pay price to get service.
+* <http://www.tunnel.mobi/> Server seems down. Use ngrok, VPS in china.
 
 At the beginning this is just for study how to proxy local server to public network. Now it can be stable use.
 
@@ -44,6 +45,14 @@ If this is a web server, only need to update `--proto`
 	Recv Message: Local server is now publicly available via:
 	http://wn8yn.t.localhost
 
+## Hooks
+The functions of hooks are limited.
+
+The hook system is very familar with git hook. When a new proxy request comes to the server. Server will execute some script.
+
+Now I put all the hook script in hooks dir. 
+
+There are examples you found in [hooks](hooks)
 
 ### Environment
 Server address default from env-var `PXL_SERVER_ADDR`
