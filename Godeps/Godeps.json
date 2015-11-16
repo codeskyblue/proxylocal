@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/codeskyblue/proxylocal",
-	"GoVersion": "go1.4.2",
+	"GoVersion": "go1.5.1",
 	"Deps": [
 		{
 			"ImportPath": "github.com/alecthomas/template",
@@ -8,7 +8,7 @@
 		},
 		{
 			"ImportPath": "github.com/alecthomas/units",
-			"Rev": "2efee857e7cfd4f3d0138cc3cbb1b4966962b93a"
+			"Rev": "6b4e7dc5e3143b85ea77909c72caf89416fc2915"
 		},
 		{
 			"ImportPath": "github.com/gorilla/websocket",
@@ -21,8 +21,8 @@
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
-			"Comment": "v2.1.3",
-			"Rev": "aef28d186e59d39ed537473dfce4472108ea1045"
+			"Comment": "v2.1.6",
+			"Rev": "6e0b900c7f00daa54d47a64b5ff6a9c745c3ba06"
 		}
 	]
 }

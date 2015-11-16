@@ -16,6 +16,7 @@ import (
 
 var ErrWebsocketBroken = errors.New("Error websocket connection")
 var ErrDialTCP = errors.New("Error dial tcp connection")
+var ErrUnknownProtocol = errors.New("Unknown protocol")
 
 type AgentOptions struct {
 	Subdomain        string
@@ -54,6 +55,10 @@ func StartAgent(pURL, sURL *url.URL, opt AgentOptions) error {
 	defer wsclient.Close()
 	go idleWsSend(wsclient)
 
+	rnl := NewRevNetListener()
+	defer rnl.Close()
+
+	go serveRevConn(pURL, rnl) // handle conn from rnl
 	for {
 		var msg Msg
 		if err := wsclient.ReadJSON(&msg); err != nil {
@@ -63,9 +68,7 @@ func StartAgent(pURL, sURL *url.URL, opt AgentOptions) error {
 		log.Debug("recv:", msg)
 
 		// sURL: serverURL
-		rnl := NewRevNetListener()
 		go handleWsMsg(msg, sURL, rnl) // send new conn to rnl
-		go handleRevConn(pURL, rnl)    // handle conn from rnl
 	}
 }
 
@@ -93,7 +96,11 @@ func NewRevNetListener() *RevNetListener {
 }
 
 func (r *RevNetListener) Accept() (net.Conn, error) {
-	return <-r.connCh, nil
+	conn, ok := <-r.connCh
+	if !ok {
+		return nil, errors.New("RevNet Closed")
+	}
+	return conn, nil
 }
 
 func (r *RevNetListener) Addr() net.Addr {
@@ -101,45 +108,8 @@ func (r *RevNetListener) Addr() net.Addr {
 }
 
 func (r *RevNetListener) Close() error {
+	close(r.connCh)
 	return nil
-}
-
-func handleRevConn(pURL *url.URL, lis net.Listener) {
-	switch pURL.Scheme {
-	case "tcp":
-		rconn, err := lis.Accept()
-		if err != nil {
-			log.Errorf("accept error: %v", err)
-			return
-		}
-		log.Info("dial local:", pURL)
-		lconn, err := net.Dial("tcp", pURL.Host)
-		if err != nil {
-			// wsclient
-			log.Println(err)
-			rconn.Close()
-			break
-		}
-		// start forward local proxy
-		pc := &ProxyConn{
-			lconn: lconn,
-			rconn: rconn,
-			stats: proxyStats,
-		}
-		go pc.start()
-	case "http", "https":
-		remote := pURL
-		rp := &httputil.ReverseProxy{
-			Director: func(req *http.Request) {
-				req.Host = remote.Host
-				req.URL.Scheme = remote.Scheme
-				req.URL.Host = remote.Host
-			},
-		}
-		http.Serve(lis, rp)
-	default:
-		log.Println("Unknown protocol:", pURL.Scheme)
-	}
 }
 
 // msg comes from px server by websocket
@@ -166,5 +136,46 @@ func handleWsMsg(msg Msg, sURL *url.URL, rnl *RevNetListener) {
 		fmt.Printf("Recv Message: %v\n", msg.Body)
 	default:
 		log.Warnf("Type: %v not support", msg.Type)
+	}
+}
+
+func serveRevConn(pURL *url.URL, lis net.Listener) error {
+	switch pURL.Scheme {
+	case "tcp":
+		for {
+			rconn, err := lis.Accept()
+			if err != nil {
+				log.Errorf("accept error: %v", err)
+				return err
+			}
+			log.Info("dial local:", pURL)
+			lconn, err := net.Dial("tcp", pURL.Host)
+			if err != nil {
+				// wsclient
+				log.Warn(err)
+				rconn.Close()
+				return err
+			}
+			// start forward local proxy
+			pc := &ProxyConn{
+				lconn: lconn,
+				rconn: rconn,
+				stats: proxyStats,
+			}
+			go pc.start()
+		}
+	case "http", "https":
+		remote := pURL
+		rp := &httputil.ReverseProxy{
+			Director: func(req *http.Request) {
+				req.Host = remote.Host
+				req.URL.Scheme = remote.Scheme
+				req.URL.Host = remote.Host
+			},
+		}
+		return http.Serve(lis, rp)
+	default:
+		log.Println("Unknown protocol:", pURL.Scheme)
+		return ErrUnknownProtocol
 	}
 }

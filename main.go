@@ -38,7 +38,7 @@ func init() {
 	kingpin.Flag("subdomain", "Proxy subdomain, used for http").StringVar(&cfg.SubDomain)
 	kingpin.Flag("remote-port", "Proxy server listen port, only used in tcp").IntVar(&cfg.ProxyPort)
 	kingpin.Flag("data", "Data send to server, can be anything").StringVar(&cfg.Data)
-	kingpin.Flag("server", "Specify server address").OverrideDefaultFromEnvar("PXL_SERVER_ADDR").Default("proxylocal.xyz").StringVar(&cfg.Server.Addr)
+	kingpin.Flag("server", "Specify server address").Short('s').OverrideDefaultFromEnvar("PXL_SERVER_ADDR").Default("proxylocal.xyz").StringVar(&cfg.Server.Addr)
 
 	kingpin.Flag("listen", "Run in server mode").Short('l').BoolVar(&cfg.Server.Enable)
 	kingpin.Flag("domain", "Proxy server mode domain name, optional").StringVar(&cfg.Server.Domain)
@@ -111,6 +111,7 @@ func main() {
 			Data:             cfg.Data,
 		})
 		if err == pxlocal.ErrWebsocketBroken {
+			failCount = 0
 			fmt.Println("Reconnect after 5 seconds ...")
 			time.Sleep(5 * time.Second)
 			continue
