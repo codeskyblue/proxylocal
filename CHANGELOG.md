@@ -12,3 +12,7 @@
     Client add redial
     Clean useless code.
     Code speed optimize
+
+- 1.1.1
+
+    performance enhancement again.
