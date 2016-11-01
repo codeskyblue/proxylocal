@@ -84,7 +84,6 @@ func (p *ProxyConn) start() {
 }
 
 func (p *ProxyConn) pipe(src, dst net.Conn) chan error {
-	//data direction
 	errch := make(chan error, 1)
 	islocal := src == p.lconn
 
