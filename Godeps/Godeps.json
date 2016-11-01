@@ -1,28 +1,34 @@
 {
 	"ImportPath": "github.com/codeskyblue/proxylocal",
-	"GoVersion": "go1.5.1",
+	"GoVersion": "go1.6",
+	"GodepVersion": "v74",
 	"Deps": [
 		{
 			"ImportPath": "github.com/alecthomas/template",
-			"Rev": "b867cc6ab45cece8143cfcc6fc9c77cf3f2c23c0"
+			"Rev": "a0175ee3bccc567396460bf5acd36800cb10c49c"
+		},
+		{
+			"ImportPath": "github.com/alecthomas/template/parse",
+			"Rev": "a0175ee3bccc567396460bf5acd36800cb10c49c"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/units",
-			"Rev": "6b4e7dc5e3143b85ea77909c72caf89416fc2915"
+			"Rev": "2efee857e7cfd4f3d0138cc3cbb1b4966962b93a"
 		},
 		{
 			"ImportPath": "github.com/gorilla/websocket",
-			"Rev": "361d4c0ffd78338ebe0a9e6320cdbe115d7dc026"
+			"Comment": "v1.0.0-28-g5df680c",
+			"Rev": "5df680c89f2a84ad9cb16cf143557a0853cfaabc"
 		},
 		{
 			"ImportPath": "github.com/qiniu/log",
-			"Comment": "v1.0.00-2-ge002bc2",
-			"Rev": "e002bc2020b19bfa61ed378cc5407383dbd2f346"
+			"Comment": "v1.0.00-1-ga304a74",
+			"Rev": "a304a74568d6982c5b89de1c68ac8fca3add196a"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
-			"Comment": "v2.1.6",
-			"Rev": "6e0b900c7f00daa54d47a64b5ff6a9c745c3ba06"
+			"Comment": "v2.2.3",
+			"Rev": "e9044be3ab2a8e11d4e1f418d12f0790d57e8d70"
 		}
 	]
 }
