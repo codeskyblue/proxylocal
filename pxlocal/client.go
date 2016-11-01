@@ -125,8 +125,9 @@ func handleWsMsg(msg Msg, sURL *url.URL, rnl *RevNetListener) {
 			log.Println(err)
 			break
 		}
+		log.Infof("proxy for: %s", msg.Name)
 		_, err = sconn.Write([]byte(fmt.Sprintf(
-			"GET /proxyhijack HTTP/1.1\r\nX-Proxy-For: %s \r\n\r\n", msg.Name)))
+			"GET /proxyhijack HTTP/1.1\r\nHost: proxylocal\r\nX-Proxy-For: %s \r\n\r\n", msg.Name)))
 		if err != nil {
 			log.Println(err)
 			break
@@ -151,7 +152,6 @@ func serveRevConn(pURL *url.URL, lis net.Listener) error {
 			log.Info("local dial tcp", pURL.Host)
 			lconn, err := net.Dial("tcp", pURL.Host)
 			if err != nil {
-				// wsclient
 				log.Warn(err)
 				rconn.Close()
 				return err

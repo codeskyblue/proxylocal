@@ -30,12 +30,6 @@ func closeRead(c net.Conn) error {
 		log.Debug("force close", c)
 		return c.Close()
 	}
-	// if tcpconn, ok := c.(*net.TCPConn); ok {
-	// 	return tcpconn.CloseRead()
-	// } else {
-	// 	// return c.Close()
-	// }
-	// return nil
 }
 
 func closeWrite(c net.Conn) error {
@@ -47,27 +41,11 @@ func closeWrite(c net.Conn) error {
 		log.Debug("force close", c)
 		return c.Close()
 	}
-	// if tcpconn, ok := c.(*net.TCPConn); ok {
-	// 	return tcpconn.CloseWrite()
-	// } else {
-	// 	log.Debug("force close", c)
-	// 	// return c.Close()
-	// 	return nil
-	// }
-	// return nil
 }
 
 func (p *ProxyConn) start() {
 	defer p.lconn.Close()
 	defer p.rconn.Close()
-	//connect to remote
-	// rconn, err := net.DialTCP("tcp", nil, p.raddr)
-	// if err != nil {
-	// 	log.Printf("Remote connection failed: %s", err)
-	// 	return
-	// }
-	// p.rconn = rconn
-	// defer p.rconn.Close()
 
 	// FIXME: may need to set a flag
 	if tcpconn, ok := p.lconn.(*net.TCPConn); ok {

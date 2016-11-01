@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/qiniu/log"
@@ -63,18 +64,22 @@ func (t *Tunnel) uniqName() string {
 }
 
 func (t *Tunnel) RequestNewConn(remoteAddr string) (net.Conn, error) {
-	connCh := make(chan net.Conn)
-	namedConnection[remoteAddr] = connCh
+	connC := make(chan net.Conn)
+	namedConnection[remoteAddr] = connC
 	defer delete(namedConnection, remoteAddr)
 
 	// request a reverse connection
 	var msg = Msg{Type: TYPE_NEWCONN, Name: remoteAddr}
 	t.wsconn.WriteJSON(msg)
-	lconn := <-connCh
-	if lconn == nil {
-		return nil, errors.New("maybe hijack not supported, failed")
+	select {
+	case lconn := <-connC:
+		if lconn == nil {
+			return nil, errors.New("maybe hijack not supported, failed")
+		}
+		return lconn, nil
+	case <-time.After(10 * time.Second):
+		return nil, errors.New("wait reverse connection timeout(10s)")
 	}
-	return lconn, nil
 }
 
 // used for httputil reverse proxy
@@ -197,32 +202,36 @@ func NewHijackReadWriteCloser(conn *net.TCPConn, bufrw *bufio.ReadWriter) net.Co
 }
 
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
-	hj, ok := w.(http.Hijacker)
-	if !ok {
-		http.Error(w, "webserver don't support hijacking", http.StatusInternalServerError)
-		return
-	}
-
 	var proxyFor = r.Header.Get("X-Proxy-For")
-	log.Println("X-Proxy-For client name:", r.RemoteAddr, proxyFor)
+	log.Infof("[remote %s] X-Proxy-For [%s]", r.RemoteAddr, proxyFor)
 
-	connCh, ok := namedConnection[proxyFor]
+	connC, ok := namedConnection[proxyFor]
 	if !ok {
 		http.Error(w, "inside error: proxy not ready to receive conn", http.StatusInternalServerError)
 		return
 	}
-	hjconn, bufrw, err := hj.Hijack()
+	conn, err := hijackHTTPRequest(w)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		connCh <- nil
+		log.Warnf("hijeck failed, %v", err)
+		connC <- nil
 		return
 	}
-	//if _, ok := hjconn.(*net.TCPConn); ok {
-	//log.Println("Hijack is tcp conn")
-	//}
+	connC <- conn
+}
 
-	conn := NewHijackReadWriteCloser(hjconn.(*net.TCPConn), bufrw)
-	connCh <- conn
+func hijackHTTPRequest(w http.ResponseWriter) (conn net.Conn, err error) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		err = errors.New("webserver don't support hijacking")
+		return
+	}
+
+	hjconn, bufrw, err := hj.Hijack()
+	if err != nil {
+		return nil, err
+	}
+	conn = NewHijackReadWriteCloser(hjconn.(*net.TCPConn), bufrw)
+	return
 }
 
 type ProxyServer struct {
@@ -335,8 +344,6 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 }
 
 func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	//log.Println("request info:", r.Method, r.Host, r.RequestURI)
-	//host, _, _ := net.SplitHostPort(r.Host)
 	// http://stackoverflow.com/questions/6899069/why-are-request-url-host-and-scheme-blank-in-the-development-server
 	r.URL.Scheme = "http" // ??
 	r.URL.Host = r.Host   // ??
@@ -347,11 +354,6 @@ func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rpx.ServeHTTP(w, r)
 		return
 	}
-
-	//if p.domain != host {
-	//	http.Error(w, fmt.Sprintf("%s not ready", host), 504)
-	//	return
-	//}
 
 	h, _ := p.Handler(r)
 	h.ServeHTTP(w, r)

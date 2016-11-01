@@ -1,6 +1,5 @@
 # proxylocal
 [![Build Status](https://travis-ci.org/codeskyblue/proxylocal.svg?branch=master)](https://travis-ci.org/codeskyblue/proxylocal)
-[![gorelease](https://dn-gorelease.qbox.me/gorelease-download-blue.svg)](http://gorelease.herokuapp.com/codeskyblue/proxylocal)
 
 Proxy local service to public.
 
@@ -25,13 +24,9 @@ At the beginning this is just for study how to proxy local server to public netw
 不过服务器最好自己搭. 如果希望贡献出来你的server可以发起个Issue.
 
 ## Installation
-Build from source code, (use [godep](https://github.com/tools/godep) is your build got some error)
-
 ```
 go get -v github.com/codeskyblue/proxylocal
 ```
-
-<del>Or [download](https://github.com/codeskyblue/proxylocal/releases) according to your platform.</del>
 
 ## Usage
 Run server in a public network, listen in port 8080 (Assuming your ip is 122.2.2.1)
