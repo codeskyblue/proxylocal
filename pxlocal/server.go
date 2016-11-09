@@ -41,13 +41,13 @@ var (
 	proxyStats      = &ProxyStats{}
 )
 
-type Msg struct {
+type message struct {
 	Type int
 	Name string
 	Body string
 }
 
-type Tunnel struct {
+type webSocketTunnel struct {
 	wsconn *websocket.Conn
 	data   string
 	sync.Mutex
@@ -56,20 +56,20 @@ type Tunnel struct {
 
 var freeport = newFreePort(TCP_MIN_PORT, TCP_MAX_PORT)
 
-func (t *Tunnel) uniqName() string {
+func (t *webSocketTunnel) uniqName() string {
 	t.Lock()
 	defer t.Unlock()
 	t.index += 1
 	return fmt.Sprintf("%d", t.index)
 }
 
-func (t *Tunnel) RequestNewConn(remoteAddr string) (net.Conn, error) {
+func (t *webSocketTunnel) RequestNewConn(remoteAddr string) (net.Conn, error) {
 	connC := make(chan net.Conn)
 	namedConnection[remoteAddr] = connC
 	defer delete(namedConnection, remoteAddr)
 
 	// request a reverse connection
-	var msg = Msg{Type: TYPE_NEWCONN, Name: remoteAddr}
+	var msg = message{Type: TYPE_NEWCONN, Name: remoteAddr}
 	t.wsconn.WriteJSON(msg)
 	select {
 	case lconn := <-connC:
@@ -83,7 +83,7 @@ func (t *Tunnel) RequestNewConn(remoteAddr string) (net.Conn, error) {
 }
 
 // used for httputil reverse proxy
-func (t *Tunnel) generateTransportDial() func(network, addr string) (net.Conn, error) {
+func (t *webSocketTunnel) generateTransportDial() func(network, addr string) (net.Conn, error) {
 	return func(network, addr string) (net.Conn, error) {
 		log.Println("transport", network, addr)
 		return t.RequestNewConn(t.uniqName())
@@ -91,7 +91,7 @@ func (t *Tunnel) generateTransportDial() func(network, addr string) (net.Conn, e
 }
 
 // Listen and forward connections
-func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, err error) {
+func newTcpProxyListener(tunnel *webSocketTunnel, port int) (listener *net.TCPListener, err error) {
 	var laddr *net.TCPAddr
 	if port != 0 {
 		laddr, _ = net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(port))
@@ -179,23 +179,23 @@ func parseConnectRequest(r *http.Request) RequestInfo {
 	}
 }
 
-type HijactRW struct {
+type hijactRW struct {
 	*net.TCPConn
 	bufrw *bufio.ReadWriter
 }
 
-func (this *HijactRW) Write(data []byte) (int, error) {
+func (this *hijactRW) Write(data []byte) (int, error) {
 	nn, err := this.bufrw.Write(data)
 	this.bufrw.Flush()
 	return nn, err
 }
 
-func (this *HijactRW) Read(p []byte) (int, error) {
+func (this *hijactRW) Read(p []byte) (int, error) {
 	return this.bufrw.Read(p)
 }
 
-func NewHijackReadWriteCloser(conn *net.TCPConn, bufrw *bufio.ReadWriter) net.Conn {
-	return &HijactRW{
+func newHijackReadWriteCloser(conn *net.TCPConn, bufrw *bufio.ReadWriter) net.Conn {
+	return &hijactRW{
 		bufrw:   bufrw,
 		TCPConn: conn,
 	}
@@ -230,7 +230,7 @@ func hijackHTTPRequest(w http.ResponseWriter) (conn net.Conn, err error) {
 	if err != nil {
 		return nil, err
 	}
-	conn = NewHijackReadWriteCloser(hjconn.(*net.TCPConn), bufrw)
+	conn = newHijackReadWriteCloser(hjconn.(*net.TCPConn), bufrw)
 	return
 }
 
@@ -241,8 +241,8 @@ type ProxyServer struct {
 	sync.RWMutex
 }
 
-func wsSendMessage(conn *websocket.Conn, message string) error {
-	return conn.WriteJSON(&Msg{Type: TYPE_MESSAGE, Body: message})
+func wsSendMessage(conn *websocket.Conn, text string) error {
+	return conn.WriteJSON(&message{Type: TYPE_MESSAGE, Body: text})
 }
 
 func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.Request) {
@@ -275,7 +275,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 		defer conn.Close()
 		log.Debug("remote client addr:", conn.RemoteAddr())
 
-		tunnel := &Tunnel{
+		tunnel := &webSocketTunnel{
 			wsconn: conn,
 			data:   reqInfo.Data,
 		}
@@ -283,8 +283,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 		log.Infof("New %s proxy for %v", reqInfo.Protocol, conn.RemoteAddr())
 		switch reqInfo.Protocol {
 		case "tcp":
-			// proxyAddr := fmt.Sprintf("0.0.0.0:%d", port)
-			listener, err := NewTcpProxyListener(tunnel, reqInfo.Port)
+			listener, err := newTcpProxyListener(tunnel, reqInfo.Port)
 			if err != nil {
 				log.Warnf("new tcp proxy err: %v", err)
 				http.Error(w, err.Error(), 501)
@@ -333,7 +332,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 		}
 		// HTTP: use httputil.ReverseProxy
 		for {
-			var msg Msg
+			var msg message
 			if err := conn.ReadJSON(&msg); err != nil {
 				log.Warn(err)
 				break

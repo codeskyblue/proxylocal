@@ -96,7 +96,7 @@ func (c *Client) StartProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
 		defer revListener.Close()
 		go serveRevConn(opts.Proto, opts.LocalAddr, revListener)
 		for {
-			var msg Msg
+			var msg message
 			if err := wsclient.ReadJSON(&msg); err != nil {
 				fmt.Println("client exit: " + err.Error())
 				pc.err = err
@@ -111,7 +111,7 @@ func (c *Client) StartProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
 }
 
 func idleWsSend(wsc *websocket.Conn) {
-	var msg Msg
+	var msg message
 	msg.Type = TYPE_IDLE
 	msg.Name = "idle"
 	for {
@@ -153,7 +153,7 @@ func (r *reverseNetListener) Close() error {
 // msg comes from px server by websocket
 // 1: connect to px server, use msg.Name to identify self.
 // 2: change conn to reverse conn
-func handleWsMsg(msg Msg, sURL *url.URL, rnl *reverseNetListener) {
+func handleWsMsg(msg message, sURL *url.URL, rnl *reverseNetListener) {
 	u := sURL
 	switch msg.Type {
 	case TYPE_NEWCONN:
