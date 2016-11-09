@@ -1,5 +1,6 @@
 # proxylocal
 [![Build Status](https://travis-ci.org/codeskyblue/proxylocal.svg?branch=master)](https://travis-ci.org/codeskyblue/proxylocal)
+[![GoDoc](https://godoc.org/github.com/codeskyblue/proxylocal/pxlocal?status.svg)](https://godoc.org/github.com/codeskyblue/proxylocal/pxlocal)
 
 Proxy local service to public.
 
@@ -55,6 +56,26 @@ Now I put all the hook script in hooks dir.
 
 There are examples you found in [hooks](hooks)
 
+## Use as a library
+```go
+package main
+
+import "github.com/codeskyblue/proxylocal/pxlocal"
+
+func main(){
+	client := pxlocal.NewClient("10.0.1.1:4000")
+	px, err := client.StartProxy(pxlocal.ProxyOptions{
+		Proto:      pxlocal.TCP,
+		LocalAddr:  "192.168.0.1:7000",
+		ListenPort: "40000", // public port
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = px.Wait()
+	log.Fatal(err)
+}
+```
 ### Environment
 Server address default from env-var `PXL_SERVER_ADDR`
 

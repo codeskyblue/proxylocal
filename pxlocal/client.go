@@ -25,8 +25,8 @@ var (
 type ProxyProtocol string
 
 const (
-	ProxyProtocolTCP  = ProxyProtocol("tcp")
-	ProxyProtocolHTTP = ProxyProtocol("http")
+	TCP  = ProxyProtocol("tcp")
+	HTTP = ProxyProtocol("http")
 )
 
 type ProxyOptions struct {
@@ -180,7 +180,7 @@ func handleWsMsg(msg message, sURL *url.URL, rnl *reverseNetListener) {
 
 func serveRevConn(proto ProxyProtocol, pAddr string, lis net.Listener) error {
 	switch proto {
-	case ProxyProtocolTCP:
+	case TCP:
 		for {
 			rconn, err := lis.Accept()
 			if err != nil {
@@ -202,7 +202,7 @@ func serveRevConn(proto ProxyProtocol, pAddr string, lis net.Listener) error {
 			}
 			go pc.start()
 		}
-	case ProxyProtocolHTTP:
+	case HTTP:
 		rp := &httputil.ReverseProxy{
 			Director: func(req *http.Request) {
 				req.Host = pAddr
