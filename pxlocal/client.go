@@ -41,6 +41,7 @@ type Client struct {
 	sURL *url.URL
 }
 
+// Proxy Client
 func NewClient(serverAddr string) *Client {
 	u := &url.URL{
 		Scheme: "ws",
@@ -51,9 +52,10 @@ func NewClient(serverAddr string) *Client {
 }
 
 type ProxyConnector struct {
-	wsConn *websocket.Conn
-	err    error
-	wg     sync.WaitGroup
+	wsConn     *websocket.Conn
+	err        error
+	wg         sync.WaitGroup
+	remoteAddr string
 }
 
 func (p *ProxyConnector) Close() error {
@@ -65,7 +67,12 @@ func (p *ProxyConnector) Wait() error {
 	return p.err
 }
 
-func (c *Client) StartProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
+func (p *ProxyConnector) RemoteAddr() string {
+	return p.remoteAddr
+}
+
+// This is a immediately return function
+func (c *Client) RunProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
 	if opts.Proto == "" {
 		return nil, ErrPrototolRequired
 	}
@@ -86,26 +93,29 @@ func (c *Client) StartProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
 	if err != nil {
 		return nil, err
 	}
-	go idleWsSend(wsclient)
 	pc = &ProxyConnector{wsConn: wsclient}
+	var msg message
+	if err := wsclient.ReadJSON(&msg); err != nil {
+		return nil, err
+	}
+	pc.remoteAddr = msg.Body
+
 	pc.wg.Add(1)
+	go idleWsSend(wsclient) // keep websocket alive to prevent nginx timeout issue
 	go func() {
-		defer pc.wg.Done()
 		defer wsclient.Close()
 		revListener := newRevNetListener()
 		defer revListener.Close()
+		defer pc.wg.Done()
+
 		go serveRevConn(opts.Proto, opts.LocalAddr, revListener)
 		for {
-			var msg message
 			if err := wsclient.ReadJSON(&msg); err != nil {
-				fmt.Println("client exit: " + err.Error())
 				pc.err = err
-				break
+				return
 			}
-			log.Debug("recv:", msg)
 			go handleWsMsg(msg, c.sURL, revListener) // send new conn to rnl
 		}
-		pc.wg.Done()
 	}()
 	return pc, nil
 }
@@ -116,7 +126,6 @@ func idleWsSend(wsc *websocket.Conn) {
 	msg.Name = "idle"
 	for {
 		if err := wsc.WriteJSON(&msg); err != nil {
-			log.Warnf("write idle msg error: %v", err)
 			break
 		}
 		time.Sleep(5 * time.Second)

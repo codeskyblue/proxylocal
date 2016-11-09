@@ -103,10 +103,6 @@ func newTcpProxyListener(tunnel *webSocketTunnel, port int) (listener *net.TCPLi
 		return nil, err
 	}
 	port = laddr.Port
-	//port, listener, err = listenTcpInRangePort(port, TCP_MIN_PORT, TCP_MAX_PORT)
-	//if err != nil {
-	//return nil, err
-	//}
 	// hook here
 	err = hook(HOOK_TCP_POST_CONNECT, []string{
 		"PORT=" + strconv.Itoa(port),
@@ -291,8 +287,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			}
 			defer listener.Close()
 			_, port, _ := net.SplitHostPort(listener.Addr().String())
-			wsSendMessage(conn, fmt.Sprintf(
-				"Local tcp conn is now publicly available via:\n%v:%v\n", ps.domain, port))
+			wsSendMessage(conn, fmt.Sprintf("%s:%v", ps.domain, port))
 		case "http", "https":
 			tr := &http.Transport{
 				Dial: tunnel.generateTransportDial(),

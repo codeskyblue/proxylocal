@@ -100,7 +100,7 @@ func main() {
 	fmt.Println("proxy URL:", pURL)
 	failCount := 0
 	for {
-		px, err := client.StartProxy(pxlocal.ProxyOptions{
+		px, err := client.RunProxy(pxlocal.ProxyOptions{
 			Proto:      pxlocal.ProxyProtocol(cfg.Proto),
 			Subdomain:  cfg.SubDomain,
 			LocalAddr:  localAddr,

@@ -67,11 +67,12 @@ func main(){
 	px, err := client.StartProxy(pxlocal.ProxyOptions{
 		Proto:      pxlocal.TCP,
 		LocalAddr:  "192.168.0.1:7000",
-		ListenPort: "40000", // public port
+		ListenPort: 40000, // public port
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+	// px.RemoteAddr()
 	err = px.Wait()
 	log.Fatal(err)
 }
