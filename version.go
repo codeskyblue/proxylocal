@@ -7,7 +7,7 @@ import (
 	"runtime"
 )
 
-const PXVER = "1.1.1"
+const PXVER = "1.1.2"
 
 var VERSION = fmt.Sprintf("Proxylocal version %s, %s\nHomepage: %s",
 	PXVER, runtime.Version(), "https://github.com/codeskyblue/proxylocal")

@@ -24,8 +24,8 @@ import (
 // need ref: revproxy
 
 const (
-	TCP_MIN_PORT = 13000
-	TCP_MAX_PORT = 14000
+	TCP_MIN_PORT = 40000
+	TCP_MAX_PORT = 50000
 
 	TYPE_NEWCONN = iota + 1
 	TYPE_MESSAGE
@@ -54,7 +54,7 @@ type Tunnel struct {
 	index int64
 }
 
-var freeport = NewFreePort(TCP_MIN_PORT, TCP_MAX_PORT)
+var freeport = newFreePort(TCP_MIN_PORT, TCP_MAX_PORT)
 
 func (t *Tunnel) uniqName() string {
 	t.Lock()
@@ -136,7 +136,7 @@ func NewTcpProxyListener(tunnel *Tunnel, port int) (listener *net.TCPListener, e
 			}
 
 			log.Debug("request new conn:", lconn, err)
-			pc := &ProxyConn{
+			pc := &proxyConn{
 				lconn: lconn,
 				rconn: rconn,
 				stats: proxyStats,
@@ -154,7 +154,7 @@ type RequestInfo struct {
 	Data      string
 }
 
-func parseConnectRequest(r *http.Request) RequestInfo { //(protocol, subdomain string, port int) {
+func parseConnectRequest(r *http.Request) RequestInfo {
 	protocol := r.FormValue("protocol")
 	if protocol == "" {
 		protocol = r.FormValue("protocal") // The last version has type error

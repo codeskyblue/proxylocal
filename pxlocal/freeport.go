@@ -6,18 +6,18 @@ import (
 	"net"
 )
 
-type FreePort struct {
+type freePort struct {
 	minPort int // >=
 	maxPort int // <
 	next    int
 	count   int
 }
 
-func NewFreePort(min, max int) *FreePort {
+func newFreePort(min, max int) *freePort {
 	if max > 65535 {
 		max = 65535
 	}
-	return &FreePort{
+	return &freePort{
 		next:    min,
 		minPort: min,
 		maxPort: max,
@@ -25,7 +25,7 @@ func NewFreePort(min, max int) *FreePort {
 	}
 }
 
-func (this *FreePort) ListenTCP() (taddr *net.TCPAddr, lis *net.TCPListener, err error) {
+func (this *freePort) ListenTCP() (taddr *net.TCPAddr, lis *net.TCPListener, err error) {
 	next := this.next
 	for i := 0; i < this.count; i++ {
 		next = (this.next+i-this.minPort)%this.count + this.minPort

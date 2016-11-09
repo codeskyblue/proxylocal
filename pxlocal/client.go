@@ -8,68 +8,106 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/qiniu/log"
 )
 
-var ErrWebsocketBroken = errors.New("Error websocket connection")
-var ErrDialTCP = errors.New("Error dial tcp connection")
-var ErrUnknownProtocol = errors.New("Unknown protocol")
+var (
+	ErrWebsocketBroken  = errors.New("Error websocket connection")
+	ErrDialTCP          = errors.New("Error dial tcp connection")
+	ErrUnknownProtocol  = errors.New("Unknown protocol")
+	ErrPrototolRequired = errors.New("Protocol required")
+)
 
-type AgentOptions struct {
-	Subdomain        string
-	ServerAddr       string
-	RemoteListenPort int
-	Data             string
+type ProxyProtocol string
+
+const (
+	ProxyProtocolTCP  = ProxyProtocol("tcp")
+	ProxyProtocolHTTP = ProxyProtocol("http")
+)
+
+type ProxyOptions struct {
+	LocalAddr  string
+	Proto      ProxyProtocol
+	Subdomain  string
+	ListenPort int
+	ExtraData  string
 }
 
-// pURL: proxy address
-// sURL: server address
-func StartAgent(pURL, sURL *url.URL, opt AgentOptions) error {
-	log.Debug("start proxy", pURL)
-	log.Debug("server host:", sURL.Host)
+type Client struct {
+	sURL *url.URL
+}
 
-	sURL.Path = "/ws"
-	conn, err := net.Dial("tcp", sURL.Host)
-	if err != nil {
-		return ErrDialTCP
+func NewClient(serverAddr string) *Client {
+	u := &url.URL{
+		Scheme: "ws",
+		Host:   serverAddr,
+		Path:   "/ws",
 	}
-	// specify remote listen port
-	sURL.Scheme = "ws"
-	query := sURL.Query()
-	query.Add("protocol", pURL.Scheme)
-	query.Add("subdomain", opt.Subdomain)
-	query.Add("data", opt.Data)
-	if opt.RemoteListenPort != 0 {
-		query.Add("port", strconv.Itoa(opt.RemoteListenPort))
-	}
-	sURL.RawQuery = query.Encode()
+	return &Client{u}
+}
 
-	log.Debug(sURL)
-	wsclient, _, err := websocket.NewClient(conn, sURL, nil, 1024, 1024)
-	if err != nil {
-		return err
+type ProxyConnector struct {
+	wsConn *websocket.Conn
+	err    error
+	wg     sync.WaitGroup
+}
+
+func (p *ProxyConnector) Close() error {
+	return p.wsConn.Close()
+}
+
+func (p *ProxyConnector) Wait() error {
+	p.wg.Wait()
+	return p.err
+}
+
+func (c *Client) StartProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
+	if opts.Proto == "" {
+		return nil, ErrPrototolRequired
 	}
-	defer wsclient.Close()
+	q := c.sURL.Query()
+	q.Add("protocol", string(opts.Proto))
+	q.Add("subdomain", opts.Subdomain)
+	q.Add("data", opts.ExtraData)
+	if opts.ListenPort != 0 {
+		q.Add("port", strconv.Itoa(opts.ListenPort))
+	}
+	c.sURL.RawQuery = q.Encode()
+
+	conn, err := net.Dial("tcp", c.sURL.Host)
+	if err != nil {
+		return nil, ErrDialTCP
+	}
+	wsclient, _, err := websocket.NewClient(conn, c.sURL, nil, 1024, 1024)
+	if err != nil {
+		return nil, err
+	}
 	go idleWsSend(wsclient)
-
-	rnl := NewRevNetListener()
-	defer rnl.Close()
-
-	go serveRevConn(pURL, rnl) // handle conn from rnl
-	for {
-		var msg Msg
-		if err := wsclient.ReadJSON(&msg); err != nil {
-			fmt.Println("client exit: " + err.Error())
-			return ErrWebsocketBroken
+	pc = &ProxyConnector{wsConn: wsclient}
+	pc.wg.Add(1)
+	go func() {
+		defer pc.wg.Done()
+		defer wsclient.Close()
+		revListener := newRevNetListener()
+		defer revListener.Close()
+		go serveRevConn(opts.Proto, opts.LocalAddr, revListener)
+		for {
+			var msg Msg
+			if err := wsclient.ReadJSON(&msg); err != nil {
+				fmt.Println("client exit: " + err.Error())
+				pc.err = err
+				break
+			}
+			log.Debug("recv:", msg)
+			go handleWsMsg(msg, c.sURL, revListener) // send new conn to rnl
 		}
-		log.Debug("recv:", msg)
-
-		// sURL: serverURL
-		go handleWsMsg(msg, sURL, rnl) // send new conn to rnl
-	}
+		pc.wg.Done()
+	}()
+	return pc, nil
 }
 
 func idleWsSend(wsc *websocket.Conn) {
@@ -85,17 +123,17 @@ func idleWsSend(wsc *websocket.Conn) {
 	}
 }
 
-type RevNetListener struct {
+type reverseNetListener struct {
 	connCh chan net.Conn
 }
 
-func NewRevNetListener() *RevNetListener {
-	return &RevNetListener{
+func newRevNetListener() *reverseNetListener {
+	return &reverseNetListener{
 		connCh: make(chan net.Conn, 100),
 	}
 }
 
-func (r *RevNetListener) Accept() (net.Conn, error) {
+func (r *reverseNetListener) Accept() (net.Conn, error) {
 	conn, ok := <-r.connCh
 	if !ok {
 		return nil, errors.New("RevNet Closed")
@@ -103,11 +141,11 @@ func (r *RevNetListener) Accept() (net.Conn, error) {
 	return conn, nil
 }
 
-func (r *RevNetListener) Addr() net.Addr {
+func (r *reverseNetListener) Addr() net.Addr {
 	return nil
 }
 
-func (r *RevNetListener) Close() error {
+func (r *reverseNetListener) Close() error {
 	close(r.connCh)
 	return nil
 }
@@ -115,7 +153,7 @@ func (r *RevNetListener) Close() error {
 // msg comes from px server by websocket
 // 1: connect to px server, use msg.Name to identify self.
 // 2: change conn to reverse conn
-func handleWsMsg(msg Msg, sURL *url.URL, rnl *RevNetListener) {
+func handleWsMsg(msg Msg, sURL *url.URL, rnl *reverseNetListener) {
 	u := sURL
 	switch msg.Type {
 	case TYPE_NEWCONN:
@@ -140,42 +178,41 @@ func handleWsMsg(msg Msg, sURL *url.URL, rnl *RevNetListener) {
 	}
 }
 
-func serveRevConn(pURL *url.URL, lis net.Listener) error {
-	switch pURL.Scheme {
-	case "tcp":
+func serveRevConn(proto ProxyProtocol, pAddr string, lis net.Listener) error {
+	switch proto {
+	case ProxyProtocolTCP:
 		for {
 			rconn, err := lis.Accept()
 			if err != nil {
 				log.Errorf("accept error: %v", err)
 				return err
 			}
-			log.Info("local dial tcp", pURL.Host)
-			lconn, err := net.Dial("tcp", pURL.Host)
+			log.Info("local dial tcp", pAddr)
+			lconn, err := net.Dial("tcp", pAddr)
 			if err != nil {
 				log.Warn(err)
 				rconn.Close()
 				return err
 			}
 			// start forward local proxy
-			pc := &ProxyConn{
+			pc := &proxyConn{
 				lconn: lconn,
 				rconn: rconn,
 				stats: proxyStats,
 			}
 			go pc.start()
 		}
-	case "http", "https":
-		remote := pURL
+	case ProxyProtocolHTTP:
 		rp := &httputil.ReverseProxy{
 			Director: func(req *http.Request) {
-				req.Host = remote.Host
-				req.URL.Scheme = remote.Scheme
-				req.URL.Host = remote.Host
+				req.Host = pAddr
+				req.URL.Scheme = "http"
+				req.URL.Host = pAddr
 			},
 		}
 		return http.Serve(lis, rp)
 	default:
-		log.Println("Unknown protocol:", pURL.Scheme)
+		log.Println("Unknown protocol:", proto)
 		return ErrUnknownProtocol
 	}
 }

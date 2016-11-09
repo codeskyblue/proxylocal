@@ -83,7 +83,6 @@ func main() {
 	}
 
 	if cfg.Server.Enable {
-		//sURL, err := pxlocal.ParseURL(localAddr, &pxlocal.URLOpts{DefaultScheme: cfg.Proto})
 		_, port, _ := net.SplitHostPort(pURL.Host)
 		if port == "" {
 			port = "80"
@@ -97,19 +96,19 @@ func main() {
 		log.Fatal(http.ListenAndServe(addr, ps))
 	}
 
-	sURL, err := pxlocal.ParseURL(cfg.Server.Addr)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	client := pxlocal.NewClient(cfg.Server.Addr)
 	fmt.Println("proxy URL:", pURL)
 	failCount := 0
 	for {
-		err = pxlocal.StartAgent(pURL, sURL, pxlocal.AgentOptions{
-			Subdomain:        cfg.SubDomain,
-			RemoteListenPort: cfg.ProxyPort,
-			Data:             cfg.Data,
+		px, err := client.StartProxy(pxlocal.ProxyOptions{
+			Proto:      pxlocal.ProxyProtocol(cfg.Proto),
+			Subdomain:  cfg.SubDomain,
+			LocalAddr:  localAddr,
+			ListenPort: cfg.ProxyPort,
 		})
+		if err == nil {
+			err = px.Wait()
+		}
 		if err == pxlocal.ErrWebsocketBroken {
 			failCount = 0
 			fmt.Println("Reconnect after 5 seconds ...")

@@ -3,7 +3,7 @@ package pxlocal
 import "testing"
 
 func TestFreePort(t *testing.T) {
-	fp := NewFreePort(42000, 42003)
+	fp := newFreePort(42000, 42003)
 	//	fp.ListenTCP()
 	taddr, lis1, err := fp.ListenTCP()
 	if err != nil {

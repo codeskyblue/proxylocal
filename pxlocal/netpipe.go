@@ -14,7 +14,7 @@ type ProxyStats struct {
 	// laddr, raddr  *net.TCPAddr
 }
 
-type ProxyConn struct {
+type proxyConn struct {
 	sentBytes     uint64
 	receivedBytes uint64
 	lconn, rconn  net.Conn
@@ -43,7 +43,7 @@ func closeWrite(c net.Conn) error {
 	}
 }
 
-func (p *ProxyConn) start() {
+func (p *proxyConn) start() {
 	defer p.lconn.Close()
 	defer p.rconn.Close()
 
@@ -83,7 +83,7 @@ func (p *ProxyConn) start() {
 	// log.Printf("Closed (%d bytes sent, %d bytes recieved)", p.sentBytes, p.receivedBytes)
 }
 
-func (p *ProxyConn) pipe(src, dst net.Conn) chan error {
+func (p *proxyConn) pipe(src, dst net.Conn) chan error {
 	errch := make(chan error, 1)
 	islocal := src == p.lconn
 
