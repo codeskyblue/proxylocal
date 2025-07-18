@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/codeskyblue/proxylocal/pxlocal"
-	"github.com/qiniu/log"
-	"gopkg.in/alecthomas/kingpin.v2"
+	"github.com/gobuild/log"
 )
 
 type GlobalConfig struct {

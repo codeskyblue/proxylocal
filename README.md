@@ -1,5 +1,4 @@
 # proxylocal
-[![Build Status](https://travis-ci.org/codeskyblue/proxylocal.svg?branch=master)](https://travis-ci.org/codeskyblue/proxylocal)
 [![GoDoc](https://godoc.org/github.com/codeskyblue/proxylocal/pxlocal?status.svg)](https://godoc.org/github.com/codeskyblue/proxylocal/pxlocal)
 
 Proxy local service to public.

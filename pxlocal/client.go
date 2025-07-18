@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gobuild/log"
 	"github.com/gorilla/websocket"
-	"github.com/qiniu/log"
 )
 
 var (

@@ -4,10 +4,10 @@ import (
 	"net"
 	"sync"
 
-	"github.com/qiniu/log"
+	"github.com/gobuild/log"
 )
 
-//A proxy represents a pair of connections and their state
+// A proxy represents a pair of connections and their state
 type ProxyStats struct {
 	sentBytes     uint64
 	receivedBytes uint64
