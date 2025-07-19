@@ -8,6 +8,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,10 +17,10 @@ import (
 )
 
 var (
-	ErrWebsocketBroken  = errors.New("Error websocket connection")
-	ErrDialTCP          = errors.New("Error dial tcp connection")
-	ErrUnknownProtocol  = errors.New("Unknown protocol")
-	ErrPrototolRequired = errors.New("Protocol required")
+	ErrWebsocketBroken  = errors.New("error websocket connection")
+	ErrDialTCP          = errors.New("error dial tcp connection")
+	ErrUnknownProtocol  = errors.New("unknown protocol")
+	ErrPrototolRequired = errors.New("protocol required")
 )
 
 type ProxyProtocol string
@@ -43,12 +44,25 @@ type Client struct {
 
 // Proxy Client
 func NewClient(serverAddr string) *Client {
-	u := &url.URL{
-		Scheme: "ws",
-		Host:   serverAddr,
-		Path:   "/ws",
+	if !strings.Contains(serverAddr, "://") {
+		serverAddr = "http://" + serverAddr
 	}
-	return &Client{u}
+	u, err := url.Parse(serverAddr) // validate URL format
+	if err != nil {
+		log.Fatal(err)
+	}
+	scheme := u.Scheme
+	switch scheme {
+	case "https":
+		scheme = "wss"
+	case "http":
+		scheme = "ws"
+	}
+	return &Client{&url.URL{
+		Scheme: scheme,
+		Host:   u.Host,
+		Path:   "/ws",
+	}}
 }
 
 type ProxyConnector struct {
@@ -71,6 +85,10 @@ func (p *ProxyConnector) RemoteAddr() string {
 	return p.remoteAddr
 }
 
+func (c *Client) URL() *url.URL {
+	return c.sURL
+}
+
 // This is a immediately return function
 func (c *Client) RunProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
 	if opts.Proto == "" {
@@ -85,21 +103,11 @@ func (c *Client) RunProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
 	}
 	c.sURL.RawQuery = q.Encode()
 
-	conn, err := net.Dial("tcp", c.sURL.Host)
-	if err != nil {
-		return nil, ErrDialTCP
-	}
-	wsclient, _, err := websocket.NewClient(conn, c.sURL, nil, 1024, 1024)
+	wsclient, _, err := websocket.DefaultDialer.Dial(c.sURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 	pc = &ProxyConnector{wsConn: wsclient}
-	var msg message
-	if err := wsclient.ReadJSON(&msg); err != nil {
-		return nil, err
-	}
-	pc.remoteAddr = msg.Body
-
 	pc.wg.Add(1)
 	go idleWsSend(wsclient) // keep websocket alive to prevent nginx timeout issue
 	go func() {
@@ -110,6 +118,7 @@ func (c *Client) RunProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
 
 		go serveRevConn(opts.Proto, opts.LocalAddr, revListener)
 		for {
+			var msg message
 			if err := wsclient.ReadJSON(&msg); err != nil {
 				pc.err = err
 				return
@@ -155,7 +164,6 @@ func (r *reverseNetListener) Addr() net.Addr {
 }
 
 func (r *reverseNetListener) Close() error {
-	close(r.connCh)
 	return nil
 }
 
@@ -163,25 +171,25 @@ func (r *reverseNetListener) Close() error {
 // 1: connect to px server, use msg.Name to identify self.
 // 2: change conn to reverse conn
 func handleWsMsg(msg message, sURL *url.URL, rnl *reverseNetListener) {
-	u := sURL
 	switch msg.Type {
 	case TYPE_NEWCONN:
-		log.Debug("dial remote:", u.Host)
-		sconn, err := net.Dial("tcp", u.Host)
-		if err != nil {
-			log.Println(err)
-			break
+		log.Debugf("New Connection: %s", msg.Name)
+		requestHeader := http.Header{
+			"X-Proxy-For": []string{msg.Name},
 		}
-		log.Infof("proxy for: %s", msg.Name)
-		_, err = sconn.Write([]byte(fmt.Sprintf(
-			"GET /proxyhijack HTTP/1.1\r\nHost: proxylocal\r\nX-Proxy-For: %s \r\n\r\n", msg.Name)))
+		wsURL := *sURL
+		wsURL.Path = "/wshijack"
+		wsConn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), requestHeader)
 		if err != nil {
-			log.Println(err)
-			break
+			log.Error("Websocket dial error:", err)
+			return
 		}
+		sconn := wsConn.NetConn()
 		rnl.connCh <- sconn
 	case TYPE_MESSAGE:
 		fmt.Printf("Recv Message: %v\n", msg.Body)
+	case TYPE_REMOTEADDR:
+		fmt.Printf("Local server is now publicly available via: %s\n", msg.Body)
 	default:
 		log.Warnf("Type: %v not support", msg.Type)
 	}

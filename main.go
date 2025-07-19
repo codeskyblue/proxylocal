@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
@@ -38,7 +39,7 @@ func init() {
 	kingpin.Flag("subdomain", "Proxy subdomain, used for http").StringVar(&cfg.SubDomain)
 	kingpin.Flag("remote-port", "Proxy server listen port, only used in tcp").IntVar(&cfg.ProxyPort)
 	kingpin.Flag("data", "Data send to server, can be anything").StringVar(&cfg.Data)
-	kingpin.Flag("server", "Specify server address").Short('s').OverrideDefaultFromEnvar("PXL_SERVER_ADDR").Default("proxylocal.xyz").StringVar(&cfg.Server.Addr)
+	kingpin.Flag("server", "Specify server address").Short('s').OverrideDefaultFromEnvar("PXL_SERVER_ADDR").Default("https://your-proxylocal-domain.com").StringVar(&cfg.Server.Addr)
 
 	kingpin.Flag("listen", "Run in server mode").Short('l').BoolVar(&cfg.Server.Enable)
 	kingpin.Flag("domain", "Proxy server mode domain name, optional").StringVar(&cfg.Server.Domain)
@@ -59,6 +60,13 @@ func parseURL(addr string, defaultProto string) (u *url.URL, err error) {
 		addr = defaultProto + "://" + addr
 	}
 	return url.Parse(addr)
+}
+
+func extractHostname(addr string) string {
+	if strings.Contains(addr, "://") {
+		addr = strings.SplitN(addr, "://", 2)[1]
+	}
+	return addr
 }
 
 func main() {
@@ -89,7 +97,7 @@ func main() {
 		}
 		addr := net.JoinHostPort("0.0.0.0", port)
 		if cfg.Server.Domain == "" {
-			cfg.Server.Domain = "localhost" //cfg.Server.Addr
+			cfg.Server.Domain = extractHostname(cfg.Server.Addr)
 		}
 		fmt.Printf("proxylocal: server listen on %v, domain is %v\n", addr, cfg.Server.Domain)
 		ps := pxlocal.NewProxyServer(cfg.Server.Domain)
@@ -97,8 +105,8 @@ func main() {
 	}
 
 	client := pxlocal.NewClient(cfg.Server.Addr)
-	fmt.Println("proxy URL:", pURL)
-	failCount := 0
+	fmt.Println("proxy server:", client.URL())
+	fmt.Println("local server:", pURL)
 	for {
 		px, err := client.RunProxy(pxlocal.ProxyOptions{
 			Proto:      pxlocal.ProxyProtocol(cfg.Proto),
@@ -108,22 +116,10 @@ func main() {
 		})
 		if err == nil {
 			err = px.Wait()
-		}
-		if err == pxlocal.ErrWebsocketBroken {
-			failCount = 0
+		} else {
+			log.Warnf("RunProxy error: %v", err)
 			fmt.Println("Reconnect after 5 seconds ...")
-			time.Sleep(5 * time.Second)
-			continue
+			time.Sleep(time.Duration(5) * time.Second)
 		}
-		if err == pxlocal.ErrDialTCP {
-			if failCount < 13 {
-				failCount += 1
-			}
-			wait := 7 + failCount
-			fmt.Printf("Reconnect after %d seconds ...\n", wait)
-			time.Sleep(time.Duration(wait) * time.Second)
-			continue
-		}
-		log.Fatal(err)
 	}
 }

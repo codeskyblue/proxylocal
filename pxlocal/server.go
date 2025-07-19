@@ -1,7 +1,6 @@
 package pxlocal
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -23,12 +22,15 @@ import (
 //  - agent convert http request to conn
 // need ref: revproxy
 
+type MessageType int
+
 const (
 	TCP_MIN_PORT = 40000
 	TCP_MAX_PORT = 50000
 
-	TYPE_NEWCONN = iota + 1
+	TYPE_NEWCONN MessageType = iota + 1
 	TYPE_MESSAGE
+	TYPE_REMOTEADDR
 	TYPE_IDLE
 )
 
@@ -42,7 +44,7 @@ var (
 )
 
 type message struct {
-	Type int
+	Type MessageType
 	Name string
 	Body string
 }
@@ -70,15 +72,19 @@ func (t *webSocketTunnel) RequestNewConn(remoteAddr string) (net.Conn, error) {
 
 	// request a reverse connection
 	var msg = message{Type: TYPE_NEWCONN, Name: remoteAddr}
-	t.wsconn.WriteJSON(msg)
+	if err := t.wsconn.WriteJSON(msg); err != nil {
+		return nil, fmt.Errorf("failed to send connection request: %v", err)
+	}
+
 	select {
 	case lconn := <-connC:
 		if lconn == nil {
-			return nil, errors.New("maybe hijack not supported, failed")
+			return nil, errors.New("connection hijack failed - server may not support hijacking")
 		}
+		log.Debugf("Established new connection for %s", remoteAddr)
 		return lconn, nil
 	case <-time.After(10 * time.Second):
-		return nil, errors.New("wait reverse connection timeout(10s)")
+		return nil, errors.New("timeout waiting for reverse connection (10s)")
 	}
 }
 
@@ -175,59 +181,25 @@ func parseConnectRequest(r *http.Request) RequestInfo {
 	}
 }
 
-type hijactRW struct {
-	*net.TCPConn
-	bufrw *bufio.ReadWriter
-}
-
-func (this *hijactRW) Write(data []byte) (int, error) {
-	nn, err := this.bufrw.Write(data)
-	this.bufrw.Flush()
-	return nn, err
-}
-
-func (this *hijactRW) Read(p []byte) (int, error) {
-	return this.bufrw.Read(p)
-}
-
-func newHijackReadWriteCloser(conn *net.TCPConn, bufrw *bufio.ReadWriter) net.Conn {
-	return &hijactRW{
-		bufrw:   bufrw,
-		TCPConn: conn,
-	}
-}
-
-func proxyHandler(w http.ResponseWriter, r *http.Request) {
+func wsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	var proxyFor = r.Header.Get("X-Proxy-For")
-	log.Infof("[remote %s] X-Proxy-For [%s]", r.RemoteAddr, proxyFor)
+	log.Infof("wshijack read: %s", proxyFor)
+
+	wsConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	// defer wsConn.Close() // keep it open for hijack
+	log.Debug("remote client addr:", wsConn.RemoteAddr())
 
 	connC, ok := namedConnection[proxyFor]
 	if !ok {
+		log.Warnf("No proxy connection waiting for %s", proxyFor)
 		http.Error(w, "inside error: proxy not ready to receive conn", http.StatusInternalServerError)
 		return
 	}
-	conn, err := hijackHTTPRequest(w)
-	if err != nil {
-		log.Warnf("hijeck failed, %v", err)
-		connC <- nil
-		return
-	}
-	connC <- conn
-}
-
-func hijackHTTPRequest(w http.ResponseWriter) (conn net.Conn, err error) {
-	hj, ok := w.(http.Hijacker)
-	if !ok {
-		err = errors.New("webserver don't support hijacking")
-		return
-	}
-
-	hjconn, bufrw, err := hj.Hijack()
-	if err != nil {
-		return nil, err
-	}
-	conn = newHijackReadWriteCloser(hjconn.(*net.TCPConn), bufrw)
-	return
+	connC <- wsConn.NetConn()
 }
 
 type ProxyServer struct {
@@ -237,8 +209,8 @@ type ProxyServer struct {
 	sync.RWMutex
 }
 
-func wsSendMessage(conn *websocket.Conn, text string) error {
-	return conn.WriteJSON(&message{Type: TYPE_MESSAGE, Body: text})
+func wsSendMessage(conn *websocket.Conn, mType MessageType, text string) error {
+	return conn.WriteJSON(&message{Type: mType, Body: text})
 }
 
 func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.Request) {
@@ -265,7 +237,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 		// create websocket connection
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			http.Error(w, err.Error(), 502)
+			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
 		defer conn.Close()
@@ -287,7 +259,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			}
 			defer listener.Close()
 			_, port, _ := net.SplitHostPort(listener.Addr().String())
-			wsSendMessage(conn, fmt.Sprintf("%s:%v", ps.domain, port))
+			wsSendMessage(conn, TYPE_REMOTEADDR, fmt.Sprintf("%s:%v", ps.domain, port))
 		case "http", "https":
 			tr := &http.Transport{
 				Dial: tunnel.generateTransportDial(),
@@ -297,24 +269,31 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 					log.Println("director:", req.RequestURI)
 				},
 				Transport: tr,
+				ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+					log.Warnf("Proxy error for %s: %v", r.URL, err)
+					if err.Error() == "EOF" {
+						http.Error(w, "Backend connection closed unexpectedly", http.StatusBadGateway)
+					} else {
+						http.Error(w, "Proxy error: "+err.Error(), http.StatusBadGateway)
+					}
+				},
 			}
 			// should hook here
 			// hook(HOOK_CREATE_HTTP_SUBDOMAIN, subdomain)
 			// generate a uniq domain
 			if reqInfo.Subdomain == "" {
-				reqInfo.Subdomain = uniqName(5) + ".t"
+				reqInfo.Subdomain = uniqName(5)
 			}
 			pxDomain := reqInfo.Subdomain + "." + ps.domain
 			log.Println("http px use domain:", pxDomain)
 			if _, exists := ps.revProxies[pxDomain]; exists {
-				wsSendMessage(conn, fmt.Sprintf("subdomain [%s] has already been taken", pxDomain))
+				wsSendMessage(conn, TYPE_MESSAGE, fmt.Sprintf("subdomain [%s] has already been taken", pxDomain))
 				return
 			}
 			ps.Lock()
 			ps.revProxies[pxDomain] = revProxy
 			ps.Unlock()
-			wsSendMessage(conn, fmt.Sprintf(
-				"Local server is now publicly available via:\nhttp://%s\n", pxDomain))
+			wsSendMessage(conn, TYPE_REMOTEADDR, pxDomain)
 
 			defer func() {
 				ps.Lock()
@@ -326,10 +305,11 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			return
 		}
 		// HTTP: use httputil.ReverseProxy
+		// Keep connection alive by reading messages
 		for {
 			var msg message
 			if err := conn.ReadJSON(&msg); err != nil {
-				log.Warn(err)
+				log.Warnf("Connection lost: %v", err)
 				break
 			}
 			log.Debug("recv json:", msg)
@@ -344,11 +324,10 @@ func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Debug("URL path:", r.URL.Path)
 	log.Debugf("proxy lists: %v", p.revProxies)
 	if rpx, ok := p.revProxies[r.Host]; ok {
-		log.Debug("server http rev proxy")
+		log.Debugf("server httpRevProxy for %s", r.Host)
 		rpx.ServeHTTP(w, r)
 		return
 	}
-
 	h, _ := p.Handler(r)
 	h.ServeHTTP(w, r)
 }
@@ -366,7 +345,7 @@ func NewProxyServer(domain string) *ProxyServer {
 	}
 	p.HandleFunc("/", p.newHomepageHandler())
 	p.HandleFunc("/ws", p.newControlHandler())
-	p.HandleFunc("/proxyhijack", proxyHandler)
+	p.HandleFunc("/wshijack", wsProxyHandler)
 
 	return p
 }
