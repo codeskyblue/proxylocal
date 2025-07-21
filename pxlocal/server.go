@@ -45,7 +45,6 @@ var (
 
 type message struct {
 	Type MessageType
-	Name string
 	Body string
 }
 
@@ -65,14 +64,19 @@ func (t *webSocketTunnel) uniqName() string {
 	return fmt.Sprintf("%d", t.index)
 }
 
+func (t *webSocketTunnel) sendMessage(mType MessageType, text string) error {
+	t.Lock()
+	defer t.Unlock()
+	return t.wsconn.WriteJSON(&message{Type: mType, Body: text})
+}
+
 func (t *webSocketTunnel) RequestNewConn(remoteAddr string) (net.Conn, error) {
 	connC := make(chan net.Conn)
 	namedConnection[remoteAddr] = connC
 	defer delete(namedConnection, remoteAddr)
 
 	// request a reverse connection
-	var msg = message{Type: TYPE_NEWCONN, Name: remoteAddr}
-	if err := t.wsconn.WriteJSON(msg); err != nil {
+	if err := t.sendMessage(TYPE_NEWCONN, remoteAddr); err != nil {
 		return nil, fmt.Errorf("failed to send connection request: %v", err)
 	}
 
@@ -183,7 +187,12 @@ func parseConnectRequest(r *http.Request) RequestInfo {
 
 func wsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	var proxyFor = r.Header.Get("X-Proxy-For")
-	log.Infof("wshijack read: %s", proxyFor)
+	if proxyFor == "" {
+		log.Infof("Headers: %v", r.Header)
+		log.Warnf("Invalid request: missing X-Proxy-For header, remoteAddr: %s", r.RemoteAddr)
+		return
+	}
+	log.Infof("wshijack proxyFor: %s", proxyFor)
 
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -196,7 +205,6 @@ func wsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	connC, ok := namedConnection[proxyFor]
 	if !ok {
 		log.Warnf("No proxy connection waiting for %s", proxyFor)
-		http.Error(w, "inside error: proxy not ready to receive conn", http.StatusInternalServerError)
 		return
 	}
 	connC <- wsConn.NetConn()
@@ -209,16 +217,12 @@ type ProxyServer struct {
 	sync.RWMutex
 }
 
-func wsSendMessage(conn *websocket.Conn, mType MessageType, text string) error {
-	return conn.WriteJSON(&message{Type: mType, Body: text})
-}
-
 func (ps *ProxyServer) newHomepageHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "text/html")
 		io.WriteString(w, fmt.Sprintf("<b>TCP:</b> recvBytes: %d, sendBytes: %d <br>",
 			proxyStats.receivedBytes, proxyStats.sentBytes))
-		io.WriteString(w, fmt.Sprintf("<b>HTTP:</b> ...<br>"))
+		io.WriteString(w, "<b>HTTP:</b> ...<br>")
 		io.WriteString(w, "<hr>")
 		for pname, _ := range ps.revProxies {
 			io.WriteString(w, fmt.Sprintf("http proxy: %s <br>", pname))
@@ -259,7 +263,7 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			}
 			defer listener.Close()
 			_, port, _ := net.SplitHostPort(listener.Addr().String())
-			wsSendMessage(conn, TYPE_REMOTEADDR, fmt.Sprintf("%s:%v", ps.domain, port))
+			tunnel.sendMessage(TYPE_REMOTEADDR, fmt.Sprintf("%s:%v", ps.domain, port))
 		case "http", "https":
 			tr := &http.Transport{
 				Dial: tunnel.generateTransportDial(),
@@ -287,13 +291,13 @@ func (ps *ProxyServer) newControlHandler() func(w http.ResponseWriter, r *http.R
 			pxDomain := reqInfo.Subdomain + "." + ps.domain
 			log.Println("http px use domain:", pxDomain)
 			if _, exists := ps.revProxies[pxDomain]; exists {
-				wsSendMessage(conn, TYPE_MESSAGE, fmt.Sprintf("subdomain [%s] has already been taken", pxDomain))
+				tunnel.sendMessage(TYPE_MESSAGE, fmt.Sprintf("subdomain [%s] has already been taken", pxDomain))
 				return
 			}
 			ps.Lock()
 			ps.revProxies[pxDomain] = revProxy
 			ps.Unlock()
-			wsSendMessage(conn, TYPE_REMOTEADDR, pxDomain)
+			tunnel.sendMessage(TYPE_REMOTEADDR, pxDomain)
 
 			defer func() {
 				ps.Lock()
@@ -345,7 +349,7 @@ func NewProxyServer(domain string) *ProxyServer {
 	}
 	p.HandleFunc("/", p.newHomepageHandler())
 	p.HandleFunc("/ws", p.newControlHandler())
-	p.HandleFunc("/wshijack", wsProxyHandler)
+	p.HandleFunc("/ws/reverse", wsProxyHandler)
 
 	return p
 }

@@ -132,7 +132,6 @@ func (c *Client) RunProxy(opts ProxyOptions) (pc *ProxyConnector, err error) {
 func idleWsSend(wsc *websocket.Conn) {
 	var msg message
 	msg.Type = TYPE_IDLE
-	msg.Name = "idle"
 	for {
 		if err := wsc.WriteJSON(&msg); err != nil {
 			break
@@ -173,12 +172,12 @@ func (r *reverseNetListener) Close() error {
 func handleWsMsg(msg message, sURL *url.URL, rnl *reverseNetListener) {
 	switch msg.Type {
 	case TYPE_NEWCONN:
-		log.Debugf("New Connection: %s", msg.Name)
+		log.Debugf("New Connection: %s", msg.Body)
 		requestHeader := http.Header{
-			"X-Proxy-For": []string{msg.Name},
+			"X-Proxy-For": []string{msg.Body},
 		}
 		wsURL := *sURL
-		wsURL.Path = "/wshijack"
+		wsURL.Path = "/ws/reverse"
 		wsConn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), requestHeader)
 		if err != nil {
 			log.Error("Websocket dial error:", err)
